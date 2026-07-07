@@ -151,10 +151,14 @@ class MazeEnv:
 
     # episode interface
 
-    def reset(self, seed: int | None = None) -> State:
+    def reset(self, seed: int | None = None,
+              state: State | None = None) -> State:
+        """Start a new episode; ``state`` overrides the start state (used by
+        tests, evaluation and the GUI)."""
         if seed is not None:
             self._rng = random.Random(seed)
-        self._state = State(self.maze.start[0], self.maze.start[1], 0, 0)
+        self._state = (State(self.maze.start[0], self.maze.start[1], 0, 0)
+                       if state is None else state)
         self._steps = 0
         self._terminated = False
         self._truncated = False
