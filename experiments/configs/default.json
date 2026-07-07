@@ -5,6 +5,7 @@
     "maze": {
         "size": 17,
         "min_wall_fraction": 0.15,
+        "target_wall_fraction": 0.18,
         "min_penalty_cells": 5,
         "num_penalty_cells": 6,
         "gate_period": 6,

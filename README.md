@@ -78,6 +78,10 @@ python experiments/run_experiments.py
 
 # Run the unit tests
 python -m pytest tests/
+
+# (Re)generate the seeded, BFS-validated map — deterministic, the committed
+# environments/maps/source.json is reproduced byte-for-byte
+python environments/generator.py
 ```
 
 _(Sections below are filled in as the corresponding parts are implemented.)_
