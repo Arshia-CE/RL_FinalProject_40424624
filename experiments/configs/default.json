@@ -28,13 +28,16 @@
             "wall_hit": -5,
             "penalty_cell": -10,
             "locked_door_attempt": -2,
+            "gate_blocked": -2,
             "key_pickup": 50,
-            "door_pass": 20,
-            "goal": 200
+            "door_pass": 0,
+            "goal": 200,
+            "comment": "door_pass is 0 because a repeatable positive bonus on a non-terminal cell could be farmed by looping through the open door; the event is still logged"
         },
         "shaped": {
             "base": "sparse",
-            "shaping": "potential-based on BFS distance to the current subgoal (key, then door, then goal)",
+            "shaping": "potential-based: F = gamma * phi(s') - phi(s) with phi = -scale * (remaining BFS distance of the mission: dist to key + key-to-goal if key not held, else dist to goal)",
+            "shaping_gamma": 0.95,
             "shaping_scale": 1.0
         }
     },
