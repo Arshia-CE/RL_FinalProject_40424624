@@ -1,0 +1,80 @@
+{
+    "student_id": "40424624",
+    "base_seed": 2,
+
+    "maze": {
+        "size": 17,
+        "min_wall_fraction": 0.15,
+        "min_penalty_cells": 5,
+        "num_penalty_cells": 6,
+        "gate_period": 6,
+        "gate_open_phases": [0, 1, 2]
+    },
+
+    "transition": {
+        "p_intended": 0.8,
+        "p_perpendicular": 0.1
+    },
+
+    "episode": {
+        "step_cap_multiplier": 3,
+        "comment": "step cap = multiplier x number of passable cells; final value recorded here per the spec"
+    },
+
+    "rewards": {
+        "sparse": {
+            "step": -1,
+            "wall_hit": -5,
+            "penalty_cell": -10,
+            "locked_door_attempt": -2,
+            "key_pickup": 50,
+            "door_pass": 20,
+            "goal": 200
+        },
+        "shaped": {
+            "base": "sparse",
+            "shaping": "potential-based on BFS distance to the current subgoal (key, then door, then goal)",
+            "shaping_scale": 1.0
+        }
+    },
+
+    "value_iteration": {
+        "gamma": 0.95,
+        "gamma_sweep": [0.90, 0.95, 0.99],
+        "convergence_threshold": 1e-6,
+        "max_iterations": 10000
+    },
+
+    "q_learning": {
+        "alpha": 0.1,
+        "gamma": 0.95,
+        "episodes": 5000,
+        "epsilon_start": 1.0,
+        "epsilon_end": 0.05,
+        "epsilon_decay_schedules": ["linear", "exponential"]
+    },
+
+    "sarsa_lambda": {
+        "alpha": 0.1,
+        "gamma": 0.95,
+        "episodes": 5000,
+        "epsilon_start": 1.0,
+        "epsilon_end": 0.05,
+        "trace_type": "replacing",
+        "lambda_sweep": [0.0, 0.3, 0.7, 0.9]
+    },
+
+    "transfer": {
+        "similar_target": {
+            "obstacle_change_fraction": 0.18,
+            "move_key_or_goal": false,
+            "extra_penalty_cells": 0
+        },
+        "different_target": {
+            "obstacle_change_fraction": 0.35,
+            "move_key_or_goal": true,
+            "extra_penalty_cells": 3
+        },
+        "beta_values": [0.25, 0.5, 0.75]
+    }
+}
