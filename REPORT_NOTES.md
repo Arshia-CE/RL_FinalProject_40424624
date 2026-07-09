@@ -116,6 +116,43 @@ Analysis points:
 Figures so far: `vi_convergence.png`, `vi_value_heatmap_gamma0.95.png`,
 `vi_policy_gamma0.95.png`, `vi_policy_by_phase_gamma0.95.png`.
 
+## 6. Q-Learning (agents/q_learning.py)
+
+Implementation notes (report material):
+- Off-policy TD control, ε-greedy behavior; **random tie-breaking** in the
+  greedy step (with zero-initialized Q, deterministic argmax would always
+  pick action 0 and bias early exploration).
+- **Truncation vs termination in the update:** the bootstrap term
+  `max_a' Q(s',a')` is zeroed only on true termination (goal). A step-cap
+  timeout still bootstraps — the cap is an episode-length device, not a
+  property of the MDP.
+- Per-state visit counts tracked during training (needed for the required
+  visit-map figure and for visit-weighted analysis) and saved with the
+  Q-table.
+- Per-update trace rows (s, a, r, s', Q-before, max Q(s'), target, TD error,
+  Q-after, α, γ, ε) recorded for selected episodes → source of the
+  hand-reconstructed update the spec requires. Sample from the demo run
+  (episode 2500, α=0.1, γ=0.95):
+  s=(0,1,k=0,p=0), a=left, r=−1 → s'=(0,0,k=0,p=1);
+  Q_before=−13.278179, max Q(s')=−11.006227,
+  target = −1 + 0.95·(−11.006227) = −11.455916,
+  TD error = 1.822263, Q_after = −13.278179 + 0.1·1.822263 = −13.095952. ✓
+- Demo run (sparse, exponential decay, 5000 episodes, seeds env=7/agent=7):
+  last-100 success **100%**, mean return **181.8** (VI optimum 191.6),
+  mean steps **48.6** (VI 43.4); 2724/2796 states visited.
+
+**Near-tie finding (feeds report Q5 and the comparison step):** raw greedy
+agreement with the VI reference is only ~51–53% (barely rising with visit
+threshold: 51.4% at ≥1, 53.0% at ≥100 visits), *yet* the learned policy
+collects ~95% of the optimal return. Explanation, verified against exact VI
+Q-values: 41.1% of non-terminal states have a second action within 1.0 of
+optimal (28.6% within 0.5, 10.6% within 0.1) — corridor states where two
+directions are equally good. Q-Learning's noisy estimates break these ties
+arbitrarily. Consequence for the comparison section: report **raw agreement**
+(spec metric) *plus* an action-gap-aware metric (agreement counting a_QL as
+correct if Q*(s, a_QL) is within tolerance of V*(s)) and/or the policy's
+value loss V*(start) − V^π(start); analyze 2–3 near-tie states explicitly.
+
 ## Report-question tracker
 
 1. **MDP + Markov property** — material ready (§1, §3).
