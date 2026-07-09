@@ -198,6 +198,41 @@ Findings:
   (c) in k=1 the gate/door cells are among the darkest — waiting and
   funneling at the bottleneck.
 
+## 8. SARSA(λ) (agents/sarsa_lambda.py)
+
+Implementation notes:
+- On-policy: the update target uses Q(s', a') for the action *actually
+  selected* by the ε-greedy policy (a' is then executed — no re-picking).
+- **Replacing traces** (justify in report): with stochastic slips the agent
+  revisits states within an episode; accumulating traces can push E > 1 and
+  destabilize updates at high λ (double-counting), while replacing caps
+  eligibility at 1 (Singh & Sutton 1996 favor replacing in tabular settings).
+- Traces reset at episode start; pruned below 1e-4 (bounds the active set to
+  ~≤60 pairs at γλ = 0.855 with negligible numerical effect — recorded in
+  config as trace_prune).
+- λ = 0 reduces *exactly* to one-step SARSA (unit-tested: trace dies
+  immediately, single-pair update). Rising λ hands the TD error backward:
+  unit-tested that a step-2 delta updates the step-1 pair by α·δ·(γλ).
+- Same per-episode metrics/persistence as Q-Learning; update() extracted in
+  both agents and unit-tested (8 update tests, 42 total).
+
+Demo run (λ=0.9, replacing, sparse, exponential decay, seed 7):
+last-100 success **100%**, mean return **182.3**, mean steps 47.2
+(QL same setup: 181.8 / 48.6; VI optimum 191.6/43.4).
+
+δ/E trace for report (episode 4900, 49 steps, `sarsa_step_trace.csv` +
+`sarsa_trace_dump.csv` in step 10):
+- steps 1–2: intended `left` slipped perpendicular into the top border →
+  r = −6 wall bumps, **negative deltas** (−8.68, −4.28): outcomes worse than
+  the state's expectation.
+- steps 4–6: productive moves down the corridor, **positive deltas**
+  (+1.28, +2.88, +1.40) — the value estimate along the path was still
+  slightly pessimistic.
+- E(s₀,a₀) after each subsequent step: 0.855, 0.731, 0.625, 0.534, 0.457,
+  0.391 — exactly (γλ)ᵗ = 0.855ᵗ geometric decay; each later delta updates
+  s₀ scaled by this factor. Interpretation: one wall bump at step 10 would
+  still nudge the values of the previous ~2 dozen state-actions.
+
 ## Report-question tracker
 
 1. **MDP + Markov property** — material ready (§1, §3).

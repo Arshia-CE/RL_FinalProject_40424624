@@ -58,6 +58,22 @@ class QLearningAgent:
         best = q.max()  # random tie-breaking matters with zero-initialized Q
         return self._rng.choice([a for a in ACTIONS if q[a] == best])
 
+    def update(self, state: State, action: int, reward: float,
+               next_state: State, terminated: bool) -> dict:
+        """One tabular backup; the step cap only truncates, so the bootstrap
+        term is zeroed solely on true termination."""
+        q = self.q_values(state)
+        q_before = float(q[action])
+        max_next = (0.0 if terminated
+                    else float(self.q_values(next_state).max()))
+        target = reward + self.gamma * max_next
+        q[action] = q_before + self.alpha * (target - q_before)
+        return {"q_before": round(q_before, 6),
+                "max_next_q": round(max_next, 6),
+                "td_target": round(target, 6),
+                "td_error": round(target - q_before, 6),
+                "q_after": round(float(q[action]), 6)}
+
     def train(self, episodes: int, schedule,
               trace_episodes: frozenset[int] = frozenset(),
               env_seed: int | None = None) -> tuple[list[dict], list[dict]]:
@@ -76,12 +92,7 @@ class QLearningAgent:
                 self.visits[state] = self.visits.get(state, 0) + 1
                 action = self._act(state, eps)
                 nxt, reward, terminated, truncated, info = self.env.step(action)
-                q = self.q_values(state)
-                q_before = float(q[action])
-                # the step cap only truncates: bootstrap unless truly terminal
-                max_next = 0.0 if terminated else float(self.q_values(nxt).max())
-                target = reward + self.gamma * max_next
-                q[action] = q_before + self.alpha * (target - q_before)
+                stats = self.update(state, action, reward, nxt, terminated)
                 ep_return += reward
                 events.update(info["events"])
                 if episode in trace_episodes:
@@ -91,11 +102,7 @@ class QLearningAgent:
                         "phase": state.phase, "action": action,
                         "reward": reward, "next_r": nxt.r, "next_c": nxt.c,
                         "next_has_key": nxt.has_key, "next_phase": nxt.phase,
-                        "q_before": round(q_before, 6),
-                        "max_next_q": round(max_next, 6),
-                        "td_target": round(target, 6),
-                        "td_error": round(target - q_before, 6),
-                        "q_after": round(float(q[action]), 6),
+                        **stats,
                         "alpha": self.alpha, "gamma": self.gamma,
                         "epsilon": round(eps, 4),
                     })

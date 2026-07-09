@@ -67,8 +67,13 @@
         "episodes": 5000,
         "epsilon_start": 1.0,
         "epsilon_end": 0.05,
+        "epsilon_decay_schedule": "exponential",
+        "epsilon_decay_episodes": 4000,
         "trace_type": "replacing",
-        "lambda_sweep": [0.0, 0.3, 0.7, 0.9]
+        "trace_prune": 1e-4,
+        "lambda_sweep": [0.0, 0.3, 0.7, 0.9],
+        "seeds": [7, 21, 42],
+        "trace_episode": 4900
     },
 
     "transfer": {
