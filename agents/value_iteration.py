@@ -1,23 +1,9 @@
-"""Value Iteration (model-based, implemented from scratch).
+"""Value Iteration over the exact MDP model, implemented from scratch.
 
-Solves the maze MDP exactly using the environment's transition model
-``env.transitions(s, a)`` via Bellman optimality backups:
-
-    V_{k+1}(s) = max_a  sum_{s'} P(s'|s,a) [ R(s,a,s') + gamma * V_k(s') ]
-
-- Convergence criterion: max_s |V_{k+1}(s) - V_k(s)| < threshold, per the
-  specification. The threshold, gamma, per-sweep deltas, iteration count and
-  wall-clock runtime are all stored with the result.
-- The greedy policy extracted from the converged V is the reference policy
-  for evaluating Q-Learning and SARSA(lambda).
-- Terminal states keep V = 0 and have no policy action.
-
-NumPy is used only to vectorize our own Bellman backup over padded
-transition arrays (at most 3 distinct movement outcomes per state-action);
-no ready-made RL implementation is involved.
-
-Usage:
-    python agents/value_iteration.py   # solve the source map + sanity checks
+Bellman optimality backups until max_s |V_{k+1}(s) - V_k(s)| < threshold,
+then greedy policy extraction; per-sweep deltas, iteration count and runtime
+are stored with the result. NumPy only vectorizes our own backup over padded
+transition arrays.
 """
 
 from __future__ import annotations

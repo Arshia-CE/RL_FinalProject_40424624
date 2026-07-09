@@ -1,11 +1,4 @@
-"""Entry point for RL_FinalProject_40424624 — Dynamic Maze RL.
-
-Launches the interactive GUI (``gui/app.py``). The GUI is implemented in a
-later step of the project plan; until then this prints project information.
-
-Usage:
-    python main.py
-"""
+"""Entry point: launches the interactive GUI (implemented in a later step)."""
 
 
 def main() -> None:

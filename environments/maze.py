@@ -1,54 +1,11 @@
-"""Dynamic maze environment modeled as a Markov Decision Process.
+"""Dynamic maze environment modeled as an MDP.
 
-State
-    ``s = (r, c, has_key, gate_phase)`` — grid position, key possession and
-    the phase of the periodic gate. Knowing s and the action fully determines
-    the distribution of the next state, so the Markov property holds without
-    any history: the door's openness follows from ``has_key`` and the gate's
-    openness follows from ``gate_phase``.
-
-Actions
-    UP / DOWN / LEFT / RIGHT. The intended direction is executed with
-    probability 0.8; with probability 0.1 each the agent deviates to one of
-    the two perpendicular directions (per the specification). The resulting
-    movement is then resolved against walls, the locked door and the gate.
-
-Movement resolution (all "blocked" outcomes keep the agent in place):
-    - wall or grid border            -> blocked, wall-hit penalty
-    - door cell without the key      -> blocked, locked-door penalty
-    - gate cell while gate is closed -> blocked, gate penalty
-      (the gate is open iff the *current* phase is in ``gate_open_phases``;
-      the phase advances by 1 every time step, blocked or not)
-    - otherwise the agent moves; entering the key cell grabs the key,
-      entering a penalty cell costs reward, entering the goal terminates.
-
-Rewards
-    ``reward = step_cost + event rewards`` from the config. Two modes:
-    - "sparse": only key pickup and goal carry positive reward.
-    - "shaped": sparse plus potential-based shaping F = g*phi(s') - phi(s)
-      with phi = -scale * remaining BFS distance of the mission
-      (dist-to-key + key-to-goal while the key is not held, else
-      dist-to-goal). The potential is continuous at the key pickup, so
-      shaping never punishes completing a subgoal, and phi(goal) = 0.
-
-Termination
-    Reaching the goal terminates the MDP. The step cap
-    (3 x passable cells, from the config) *truncates* an episode; it is an
-    episode-length device for the learning algorithms, not part of the
-    stationary MDP, so Value Iteration ignores it. ``step()`` therefore
-    returns separate ``terminated`` / ``truncated`` flags.
-
-Model access
-    ``transitions(s, a)`` exposes the exact transition model
-    [(prob, s', reward, done), ...] for Value Iteration, built from the same
-    resolution code that ``step()`` samples from — model and simulation can
-    never diverge.
-
-Events (all logged): move, wall_hit, penalty_cell, key_pickup,
-locked_door_attempt, door_pass, gate_blocked, goal_reached, timeout.
-
-Usage:
-    python environments/maze.py    # smoke test on the saved source map
+State s = (r, c, has_key, gate_phase); actions U/D/L/R with 0.8/0.1/0.1
+stochasticity. Walls, the locked door (keyless) and the closed gate block by
+keeping the agent in place; the gate phase advances every step. Rewards are
+sparse or potential-based shaped; the goal terminates, the step cap
+truncates. transitions() exposes the exact model for Value Iteration, built
+from the same resolution code that step() samples from.
 """
 
 from __future__ import annotations

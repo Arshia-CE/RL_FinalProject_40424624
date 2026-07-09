@@ -1,31 +1,10 @@
 """Seeded maze generation, BFS validation and map persistence.
 
-The base map is generated from the student-specific seed on a 17x17 grid
-(``base_seed = int("40424624"[-2]) = 2``, ``size = 15 + (2 % 4) = 17``):
-
-- at least 15% of all cells are walls (we target ~18% for a maze-like feel),
-- at least 5 penalty cells (6 by default),
-- start, key, locked door, goal and one periodic-gate cell,
-- the goal sits inside a walled chamber whose only entrance is the locked
-  door, so the mission order start -> key -> door -> goal is structural and
-  not just a reward artifact,
-- the periodic gate (the chosen dynamic feature) is placed on the corridor
-  cell at the chamber entrance -- the only cell from which the door can be
-  reached -- so every successful episode must interact with it and the agent
-  genuinely has to reason about the gate phase (wait, or time its arrival).
-
-Validation uses deterministic BFS: a path must exist start -> key with the
-door closed, and key -> goal with the door open. The gate is treated as
-passable for reachability because a closed gate only delays the agent (it
-behaves like a wall bump), it never disconnects the maze. If a candidate map
-violates any constraint it is regenerated reproducibly with
-``effective_seed = base_seed * 1000 + attempt``.
-
-The final validated map is saved to ``environments/maps/`` and is shared by
-all three algorithms, as the specification requires.
-
-Usage:
-    python environments/generator.py      # generate + validate + save + preview
+Maps are generated reproducibly from the student seed under the spec
+constraints (>=15% walls, >=5 penalty cells; goal in a walled chamber whose
+only entrance is the locked door, with the periodic gate on the single
+corridor cell in front of it), BFS-validated for start -> key -> goal
+solvability, and saved to environments/maps/.
 """
 
 from __future__ import annotations
