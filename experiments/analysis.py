@@ -268,6 +268,49 @@ def plot_visit_map(maze: MazeMap, visits: dict[State, int], title: str,
     _save(fig, path)
 
 
+def plot_sarsa_trace(step_trace: list[dict], trace_dump: list[dict],
+                     gamma: float, lam: float, title: str,
+                     path: Path) -> None:
+    """One traced episode: per-step TD error and eligibility decay."""
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(9.8, 3.7))
+    steps = [row["step"] for row in step_trace]
+    ax1.axhline(0, color=BASELINE, linewidth=1)
+    ax1.plot(steps, [row["delta"] for row in step_trace],
+             color=CATEGORICAL[0], linewidth=2)
+    ax1.set_xlabel("step")
+    ax1.set_ylabel("TD error δ")
+
+    # eligibility of the pairs bumped in the first steps: straight lines on
+    # a log axis confirm the (gamma*lambda)^t geometric decay
+    pairs: list[tuple] = []
+    for row in step_trace:
+        key = (row["r"], row["c"], row["has_key"], row["phase"],
+               row["action"])
+        if key not in pairs:
+            pairs.append(key)
+        if len(pairs) == 4:
+            break
+    for key, color in zip(pairs, CATEGORICAL):
+        series = [(row["step"], row["E"]) for row in trace_dump
+                  if (row["r"], row["c"], row["has_key"], row["phase"],
+                      row["action"]) == key]
+        ax2.semilogy([s for s, _ in series], [e for _, e in series],
+                     color=color, linewidth=2,
+                     label=f"s=({key[0]},{key[1]}) p={key[3]} "
+                           f"a={ARROW[key[4]]}")
+    ax2.set_xlabel("step")
+    ax2.set_ylabel("eligibility E (log scale)")
+    ax2.legend(frameon=False, fontsize=8, labelcolor=INK_2)
+    for ax in (ax1, ax2):
+        ax.grid(color=GRID_COLOR, linewidth=0.5)
+        ax.set_axisbelow(True)
+        for side in ("top", "right"):
+            ax.spines[side].set_visible(False)
+    fig.suptitle(f"{title} (γλ = {gamma * lam:g})", color=INK)
+    fig.tight_layout()
+    _save(fig, path)
+
+
 def write_csv(rows: list[dict], path: Path) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     with open(path, "w", newline="", encoding="utf-8") as fh:

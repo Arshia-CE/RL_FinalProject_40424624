@@ -233,6 +233,38 @@ last-100 success **100%**, mean return **182.3**, mean steps 47.2
   s₀ scaled by this factor. Interpretation: one wall bump at step 10 would
   still nudge the values of the previous ~2 dozen state-actions.
 
+## 9. SARSA(λ) lambda sweep (run_experiments.py: sarsa_lambda)
+
+Data: `sarsa_training.csv`, `sarsa_summary.csv`, `sarsa_step_trace.csv`,
+`sarsa_trace_dump.csv`; models `sarsa_lambda{0,0.3,0.7,0.9}_sparse.json`.
+Figures: `sarsa_lambda_sweep.png`, `sarsa_delta_trace.png`.
+4 λ × 3 seeds, sparse reward, exponential decay, replacing traces.
+
+| λ | episodes to 90% success (mean) | late return std (seed range) | eval return (seed range) |
+|---|---|---|---|
+| 0 | 1670 | 26.0 – 72.0 | 185.1 – 188.1 |
+| 0.3 | 1334 | 22.6 – 45.4 | 187.6 – 190.7 |
+| 0.7 | 982 | **16.5 – 24.4** | **189.5 – 190.8** |
+| 0.9 | 805 | 16.5 – 31.6 | 187.0 – 189.1 |
+
+**Answer to report Q4 (best λ):** learning speed rises monotonically with λ
+(1670 → 805 episodes to 90%), but **λ = 0.7 gives the best balance**: ~1.7×
+faster than λ=0 while showing the lowest and most consistent late-training
+variance and the highest, tightest final returns. λ=0.9 is fastest to the
+90% mark yet slightly noisier/lower at convergence — long traces also
+propagate the deltas of exploratory slips backward, injecting noise. λ=0
+(one-step SARSA) is slowest and has the largest across-seed spread in late
+returns (a lingering-stale-values effect: single-step backups correct
+distant states very slowly).
+
+δ/E interpretation figure (`sarsa_delta_trace.png`, episode 4900):
+- left panel: δ hovers near 0 (converged values) with sharp spikes at
+  stochastic slips — worse-than-expected outcomes (wall/penalty, δ ≈ −43)
+  and better-than-expected recoveries (δ ≈ +27);
+- right panel: eligibilities of the first four state-actions are parallel
+  straight lines on the log axis — exactly (γλ)ᵗ = 0.855ᵗ decay, each
+  later δ updating them with that weight.
+
 ## Report-question tracker
 
 1. **MDP + Markov property** — material ready (§1, §3).
@@ -240,7 +272,7 @@ last-100 success **100%**, mean return **182.3**, mean steps 47.2
    penalty cell (12,11) beside the key is the designated observation zone.
 3. **Why VI needs the model** — material forming (§5; `transitions()` vs
    sampled `step()`); finish after model-free steps for the contrast.
-4. **Best λ** — pending (SARSA(λ) step).
+4. **Best λ** — answered (§9): λ=0.7, with numbers.
 5. **Three states where model-free ≠ VI** — pending (comparison step);
    near-tie states from §5 are candidates.
 6. **Transfer: similar vs different target** — pending (transfer steps).
