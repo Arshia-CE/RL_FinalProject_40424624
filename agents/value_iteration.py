@@ -21,7 +21,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from environments.generator import DEFAULT_CONFIG_PATH, MAPS_DIR, MazeMap
+from environments.maze_map import DEFAULT_CONFIG_PATH, MAPS_DIR, MazeMap
 from environments.maze import ACTION_NAMES, ACTIONS, MazeEnv, State
 
 MODELS_DIR = PROJECT_ROOT / "results" / "models"
@@ -197,7 +197,7 @@ def main() -> None:
     start_state = State(maze.start[0], maze.start[1], 0, 0)
     print(f"V(start) = {result.V[start_state]:.2f}")
 
-    out = MODELS_DIR / f"vi_sparse_gamma{result.gamma:g}.json"
+    out = MODELS_DIR / "vi" / f"vi_sparse_gamma{result.gamma:g}.json"
     result.save(out)
     assert VIResult.load(out).V == result.V
     print(f"saved reference model to {out.relative_to(PROJECT_ROOT)}")

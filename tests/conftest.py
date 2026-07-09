@@ -12,7 +12,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from environments.generator import DEFAULT_CONFIG_PATH, MAPS_DIR, MazeMap
+from environments.maze_map import DEFAULT_CONFIG_PATH, MAPS_DIR, MazeMap
 
 
 @pytest.fixture(scope="session")

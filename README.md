@@ -30,9 +30,10 @@ so every result is reproducible from the committed configuration.
 
 ```
 RL_FinalProject_40424624/
-├── environments/          # Maze MDP + seeded map generator
-│   ├── maze.py
-│   ├── generator.py
+├── environments/          # Maze MDP + seeded map generation
+│   ├── maze_map.py        # Cell types, MazeMap model, BFS, validation
+│   ├── generator.py       # Seeded generation + transfer-target derivation
+│   ├── maze.py            # The MDP environment (dynamics, rewards, logging)
 │   └── maps/              # Saved, BFS-validated map files
 ├── agents/                # From-scratch RL algorithms
 │   ├── value_iteration.py
@@ -43,16 +44,23 @@ RL_FinalProject_40424624/
 ├── gui/                   # Interactive Tkinter visualization
 │   ├── app.py
 │   └── renderer.py
-├── experiments/           # Experiment runners + statistical analysis
-│   ├── run_experiments.py
-│   ├── analysis.py
-│   └── configs/           # JSON config per experiment
-├── results/
-│   ├── raw_data/          # Per-episode CSV logs + event logs
-│   ├── models/            # Saved V/Q tables and policies
-│   ├── figures/           # Heatmaps, policy maps, learning curves
+├── experiments/
+│   ├── run_experiments.py # Dispatcher: runs all or selected experiments
+│   ├── common.py          # Config loading + policy evaluation helpers
+│   ├── analysis.py        # Palette/style, CSV utils, curve/trace figures
+│   ├── maze_plots.py      # Maze-rendered figures (heatmaps, policies, ...)
+│   ├── exp_value_iteration.py
+│   ├── exp_q_learning.py
+│   ├── exp_sarsa_lambda.py
+│   ├── exp_comparison.py
+│   ├── exp_transfer.py
+│   └── configs/           # JSON config (all experiment parameters)
+├── results/               # One subfolder per experiment topic:
+│   ├── raw_data/{vi,q_learning,sarsa,comparison,transfer}/
+│   ├── models/{vi,q_learning,sarsa}/
+│   ├── figures/{vi,q_learning,sarsa,comparison,transfer}/
 │   └── videos/
-├── tests/                 # Unit tests (environment, updates)
+├── tests/                 # Unit tests (generator, environment, updates)
 ├── report.pdf             # Final analytical report
 ├── requirements.txt
 ├── README.md

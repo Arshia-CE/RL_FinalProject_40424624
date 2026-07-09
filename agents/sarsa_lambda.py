@@ -17,7 +17,7 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from agents.q_learning import epsilon_schedule
-from environments.generator import DEFAULT_CONFIG_PATH, MAPS_DIR, MazeMap
+from environments.maze_map import DEFAULT_CONFIG_PATH, MAPS_DIR, MazeMap
 from environments.maze import (ACTIONS, EV_DOOR_LOCKED, EV_GATE_BLOCKED,
                                EV_KEY_PICKUP, EV_PENALTY, EV_WALL_HIT,
                                MazeEnv, State)
@@ -217,7 +217,7 @@ def main() -> None:
           f"{[round(e, 4) for e in decay[:6]]} (gamma*lambda = "
           f"{scfg['gamma'] * lam:.3f} per step)")
 
-    out = MODELS_DIR / f"sarsa_lambda{lam:g}_sparse.json"
+    out = MODELS_DIR / "sarsa" / f"sarsa_lambda{lam:g}_sparse.json"
     agent.save(out, {"reward_mode": "sparse",
                      "schedule": scfg["epsilon_decay_schedule"],
                      "episodes": scfg["episodes"], "seed": 7})

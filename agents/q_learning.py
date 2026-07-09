@@ -16,7 +16,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from environments.generator import DEFAULT_CONFIG_PATH, MAPS_DIR, MazeMap
+from environments.maze_map import DEFAULT_CONFIG_PATH, MAPS_DIR, MazeMap
 from environments.maze import (ACTIONS, EV_DOOR_LOCKED, EV_GATE_BLOCKED,
                                EV_KEY_PICKUP, EV_PENALTY, EV_WALL_HIT,
                                MazeEnv, State)
@@ -178,7 +178,7 @@ def main() -> None:
           f"Q after {row['q_after']}")
 
     from agents.value_iteration import VIResult
-    ref = VIResult.load(MODELS_DIR / "vi_sparse_gamma0.95.json")
+    ref = VIResult.load(MODELS_DIR / "vi" / "vi_sparse_gamma0.95.json")
     policy = agent.greedy_policy()
     for min_visits in (1, 10, 100):
         states = [s for s in agent.visited_states()
@@ -188,7 +188,7 @@ def main() -> None:
         print(f"agreement with VI on states visited >= {min_visits:3d}: "
               f"{agreement:5.1%}  ({len(states)} states)")
 
-    out = MODELS_DIR / "q_learning_sparse_exponential.json"
+    out = MODELS_DIR / "q_learning" / "q_learning_sparse_exponential.json"
     agent.save(out, {"reward_mode": "sparse", "schedule": "exponential",
                      "episodes": qcfg["episodes"],
                      "epsilon_start": qcfg["epsilon_start"],

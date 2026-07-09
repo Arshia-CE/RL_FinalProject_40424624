@@ -5,6 +5,10 @@ every project step. The final report (in whatever language) is assembled from
 these notes; numbers here are copied from committed raw data in
 `results/raw_data/`, never typed from memory.
 
+Layout note: results are organized per topic — raw_data/figures/models each
+contain `vi/`, `q_learning/`, `sarsa/`, `comparison/`, `transfer/`
+subfolders; file names referenced in these notes are unchanged.
+
 ## 1. Problem setup & derived parameters
 
 - Student ID `40424624` → `base_seed = int(id[-2]) = 2`,

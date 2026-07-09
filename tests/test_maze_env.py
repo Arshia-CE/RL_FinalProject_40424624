@@ -8,7 +8,7 @@ from collections import Counter
 
 import pytest
 
-from environments.generator import NORMAL
+from environments.maze_map import NORMAL
 from environments.maze import (ACTION_DELTAS, ACTIONS, EV_DOOR_LOCKED,
                                EV_DOOR_PASS, EV_GATE_BLOCKED, EV_GOAL,
                                EV_KEY_PICKUP, EV_MOVE, EV_PENALTY,

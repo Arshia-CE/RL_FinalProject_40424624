@@ -4,11 +4,11 @@ import copy
 
 import pytest
 
-from environments.generator import (DOOR, GATE, GOAL, KEY, MAPS_DIR, PENALTY,
-                                    START, MazeMap, bfs_shortest_path,
-                                    generate_map, make_target_map,
-                                    path_exists, validate_map,
+from environments.generator import (generate_map, make_target_map,
                                     walls_changed_fraction)
+from environments.maze_map import (DOOR, GATE, GOAL, KEY, MAPS_DIR, PENALTY,
+                                   START, MazeMap, bfs_shortest_path,
+                                   path_exists, validate_map)
 
 
 def cells_of_type(maze, cell_type):
