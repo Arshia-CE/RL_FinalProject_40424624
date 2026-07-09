@@ -4,9 +4,11 @@ import copy
 
 import pytest
 
-from environments.generator import (DOOR, GATE, GOAL, KEY, PENALTY, START,
-                                    WALL, MazeMap, bfs_shortest_path,
-                                    generate_map, path_exists, validate_map)
+from environments.generator import (DOOR, GATE, GOAL, KEY, MAPS_DIR, PENALTY,
+                                    START, MazeMap, bfs_shortest_path,
+                                    generate_map, make_target_map,
+                                    path_exists, validate_map,
+                                    walls_changed_fraction)
 
 
 def cells_of_type(maze, cell_type):
@@ -91,3 +93,49 @@ class TestPaths:
             assert abs(r1 - r2) + abs(c1 - c2) == 1
             assert not maze.is_wall((r2, c2))
             assert maze.grid[r2][c2] != DOOR
+
+
+@pytest.fixture(scope="module")
+def similar(config, maze):
+    return make_target_map(maze, config, "similar")
+
+
+@pytest.fixture(scope="module")
+def different(config, maze):
+    return make_target_map(maze, config, "different")
+
+
+class TestTransferTargets:
+    def test_targets_reproduce_committed_maps(self, similar, different):
+        for target, name in ((similar, "target_similar.json"),
+                             (different, "target_different.json")):
+            saved = MazeMap.load(MAPS_DIR / name)
+            assert target.to_dict() == saved.to_dict()
+
+    def test_similar_moves_15_to_20_percent(self, maze, similar):
+        assert 0.15 <= walls_changed_fraction(maze, similar) <= 0.20
+
+    def test_similar_keeps_mission_cells_and_wall_count(self, maze, similar):
+        for field in ("start", "key", "door", "goal", "gate"):
+            assert getattr(similar, field) == getattr(maze, field)
+        assert similar.wall_count == maze.wall_count
+        assert sorted(map(tuple, similar.penalty_cells)) == sorted(
+            map(tuple, maze.penalty_cells))
+
+    def test_different_changes_at_least_35_percent(self, maze, different):
+        assert walls_changed_fraction(maze, different) >= 0.35
+
+    def test_different_moves_key_and_adds_penalties(self, config, maze,
+                                                    different):
+        assert tuple(different.key) != tuple(maze.key)
+        extra = config["transfer"]["different_target"]["extra_penalty_cells"]
+        assert len(different.penalty_cells) == len(maze.penalty_cells) + extra
+        for field in ("start", "door", "goal", "gate"):
+            assert getattr(different, field) == getattr(maze, field)
+
+    def test_both_targets_validate(self, config, similar, different):
+        for target in (similar, different):
+            ok, problems = validate_map(target, config["maze"])
+            assert ok, problems
+            assert not path_exists(target.grid, target.start, target.goal,
+                                   door_open=False)  # chamber still sealed

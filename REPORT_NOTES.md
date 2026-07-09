@@ -322,6 +322,33 @@ Three sample states (`comparison_sample_states.csv`, report Q5):
   visits concentrate; red scatters off-path; chamber blank at k=0
   (unreachable). Spatial pattern = the visit-density story in one figure.
 
+## 11. Transfer target maps (environments/generator.py: perturb_map)
+
+Maps: `environments/maps/target_similar.json`, `target_different.json` —
+derived deterministically from the source (seed = base_seed·100000 +
+offset {1000, 2000} + attempt; both succeed at attempt 0), BFS-validated,
+chamber/door/gate/start never touched. Walls are *moved* (removed + added
+elsewhere), so the wall count and the ≥15% constraint are preserved.
+
+| | similar | different |
+|---|---|---|
+| walls moved | 11/56 = **19.6%** (spec 15–20%) | 20/56 = **35.7%** (spec ≥35%) |
+| key | unchanged (12,10) | **moved to (5,15)** |
+| penalty cells | unchanged (6) | **+3 → 9** (new: (3,10), (10,8), (15,3)) |
+| start/door/goal/gate | unchanged | unchanged |
+
+Notes:
+- In the different target the new key (5,15) again sits beside a penalty
+  cell (5,16) — the risky-pickup motif recurs, useful for the transfer
+  analysis (does transferred knowledge steer the agent to the *old* key
+  area = negative transfer?).
+- Old key area (12,10) becomes a plain corridor in the different target —
+  the transferred Q-table's "go to (12,10)" gradient is exactly the
+  negative-transfer candidate for §12.
+- 6 new unit tests (48 total): targets reproduce the committed files,
+  fractions within spec bands, mission cells preserved/moved as required,
+  BFS validity + chamber still sealed in both.
+
 ## Report-question tracker
 
 1. **MDP + Markov property** — material ready (§1, §3).

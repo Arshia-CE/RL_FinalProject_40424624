@@ -4,7 +4,9 @@ Maps are generated reproducibly from the student seed under the spec
 constraints (>=15% walls, >=5 penalty cells; goal in a walled chamber whose
 only entrance is the locked door, with the periodic gate on the single
 corridor cell in front of it), BFS-validated for start -> key -> goal
-solvability, and saved to environments/maps/.
+solvability, and saved to environments/maps/. Transfer targets are derived
+deterministically from the source map: "similar" moves ~18% of the walls,
+"different" moves >=35%, relocates the key and adds penalty cells.
 """
 
 from __future__ import annotations
@@ -263,6 +265,95 @@ def _try_generate(cfg: dict, base_seed: int, attempt: int,
     )
 
 
+# transfer targets
+
+
+def perturb_map(source: MazeMap, maze_cfg: dict, *, change_fraction: float,
+                relocate_key: bool, extra_penalty_cells: int,
+                seed_offset: int, max_attempts: int = 200) -> MazeMap:
+    """Derive a BFS-valid target map by *moving* ceil(fraction * walls) walls
+    (wall count is preserved); optionally relocate the key and add penalty
+    cells. The goal chamber ring, door, gate, goal and start never change."""
+    n = source.size
+    ring_r, ring_c = n - 4, n - 4
+    ring = set([(ring_r, c) for c in range(ring_c, n)]
+               + [(r, ring_c) for r in range(ring_r + 1, n)])
+    moves = math.ceil(change_fraction * source.wall_count)
+
+    for attempt in range(max_attempts):
+        seed = source.base_seed * 100_000 + seed_offset + attempt
+        rng = random.Random(seed)
+        grid = [row[:] for row in source.grid]
+
+        movable = [(r, c) for r in range(n) for c in range(n)
+                   if grid[r][c] == WALL and (r, c) not in ring]
+        free = [(r, c) for r in range(n) for c in range(n)
+                if grid[r][c] == NORMAL]
+        if moves > min(len(movable), len(free)):
+            raise RuntimeError("not enough movable walls / free cells")
+        for r, c in rng.sample(movable, moves):
+            grid[r][c] = NORMAL
+        for r, c in rng.sample(free, moves):
+            grid[r][c] = WALL
+
+        key = tuple(source.key)
+        if relocate_key:
+            candidates = [
+                (r, c) for r in range(n) for c in range(n)
+                if grid[r][c] == NORMAL
+                and abs(r - source.start[0]) + abs(c - source.start[1]) >= n
+                and abs(r - source.key[0]) + abs(c - source.key[1]) >= 5]
+            if not candidates:
+                continue
+            key = rng.choice(candidates)
+            grid[source.key[0]][source.key[1]] = NORMAL
+            grid[key[0]][key[1]] = KEY
+
+        penalty_cells = [tuple(p) for p in source.penalty_cells]
+        if extra_penalty_cells:
+            candidates = [
+                (r, c) for r in range(n) for c in range(n)
+                if grid[r][c] == NORMAL
+                and abs(r - source.start[0]) + abs(c - source.start[1]) >= 2]
+            if len(candidates) < extra_penalty_cells:
+                continue
+            new_cells = rng.sample(candidates, extra_penalty_cells)
+            for r, c in new_cells:
+                grid[r][c] = PENALTY
+            penalty_cells += new_cells
+
+        candidate = MazeMap(
+            grid=grid, size=n, base_seed=source.base_seed, attempt=attempt,
+            effective_seed=seed, start=tuple(source.start), key=key,
+            door=tuple(source.door), goal=tuple(source.goal),
+            gate=tuple(source.gate), penalty_cells=penalty_cells,
+            gate_period=source.gate_period,
+            gate_open_phases=list(source.gate_open_phases))
+        if validate_map(candidate, maze_cfg)[0]:
+            return candidate
+    raise RuntimeError(f"no valid target map in {max_attempts} attempts")
+
+
+TARGET_SEED_OFFSETS = {"similar": 1000, "different": 2000}
+
+
+def make_target_map(source: MazeMap, config: dict, kind: str) -> MazeMap:
+    tcfg = config["transfer"][f"{kind}_target"]
+    return perturb_map(
+        source, config["maze"],
+        change_fraction=tcfg["obstacle_change_fraction"],
+        relocate_key=tcfg["move_key_or_goal"],
+        extra_penalty_cells=tcfg["extra_penalty_cells"],
+        seed_offset=TARGET_SEED_OFFSETS[kind])
+
+
+def walls_changed_fraction(source: MazeMap, target: MazeMap) -> float:
+    """Share of the source's walls that were removed (== added elsewhere)."""
+    removed = sum(1 for r in range(source.size) for c in range(source.size)
+                  if source.grid[r][c] == WALL and target.grid[r][c] != WALL)
+    return removed / source.wall_count
+
+
 # validation
 
 
@@ -306,6 +397,18 @@ def main() -> None:
     legend = "  ".join(f"{ch}={name}" for ch, name in CELL_LEGEND.items())
     print(f"Legend: {legend}")
     print(maze.ascii_render())
+
+    for kind in ("similar", "different"):
+        target = make_target_map(maze, config, kind)
+        target_path = MAPS_DIR / f"target_{kind}.json"
+        target.save(target_path)
+        changed = walls_changed_fraction(maze, target)
+        print()
+        print(f"Transfer target '{kind}': {changed:.1%} of walls moved "
+              f"(attempt {target.attempt}), key {tuple(target.key)}, "
+              f"{len(target.penalty_cells)} penalty cells")
+        print(f"Saved to {target_path.relative_to(PROJECT_ROOT)}")
+        print(target.ascii_render())
 
 
 if __name__ == "__main__":
