@@ -92,7 +92,4 @@ _To be completed: exact commands and expected outputs for every figure in the
 report. All figures are generated from the raw CSV data in `results/raw_data/`
 using the committed configs — no manual editing._
 
-## Attribution & AI assistance
 
-_To be completed: sources used, plus the AI-assistance disclosure table required
-by the specification (usage, received suggestion, student modification, reason)._
