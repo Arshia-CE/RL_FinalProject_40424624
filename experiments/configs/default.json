@@ -87,6 +87,17 @@
             "move_key_or_goal": true,
             "extra_penalty_cells": 3
         },
-        "beta_values": [0.25, 0.5, 0.75]
+        "beta_values": [0.25, 0.5, 0.75],
+        "episodes": 2500,
+        "alpha": 0.1,
+        "gamma": 0.95,
+        "epsilon_start": 0.3,
+        "epsilon_end": 0.05,
+        "epsilon_decay_episodes": 2000,
+        "epsilon_decay_schedule": "exponential",
+        "seeds": [7, 21, 42],
+        "jumpstart_episodes": 200,
+        "negative_case_checkpoints": [0, 100, 500, 1000, 2500],
+        "comment": "epsilon starts at 0.3 for ALL scenarios (incl. scratch): zero-init Q with random tie-breaking explores like epsilon=1 anyway, and a low epsilon keeps the jumpstart advantage of transferred tables visible during training"
     }
 }

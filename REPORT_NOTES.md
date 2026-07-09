@@ -349,6 +349,64 @@ Notes:
   fractions within spec bands, mission cells preserved/moved as required,
   BFS validity + chamber still sealed in both.
 
+## 12. Transfer learning (run_experiments.py: transfer)
+
+Data: `transfer_training.csv`, `transfer_summary.csv`,
+`transfer_negative_case.csv`. Figures: `transfer_curves_{similar,different}.png`,
+`transfer_beta_{similar,different}.png`. 6 scenarios × 2 targets × 3 seeds,
+2500 episodes, ε 0.3→0.05 (all scenarios share the schedule; zero-init Q +
+random tie-breaking explores like ε≈1 anyway, so scratch is not handicapped).
+Jumpstart = greedy evaluation of the initial table *before* training
+(200 episodes). Unchanged 3×3 neighborhoods: similar 119/222 cells (53.6%),
+different 61/213 (28.6%) → selective transfers 1356 / 672 of 2724 states.
+
+Seed-averaged results (target optimum: similar 192.5, different 179.8):
+
+| target | scenario | jumpstart | episodes to 90% | final return |
+|---|---|---|---|---|
+| similar | scratch | 0% / −3670 | 718 | 181.0 |
+| similar | full | **100% / −139** | **99** | 184.9 |
+| similar | scaled β=0.25 | 100% / −139 | **99** | **190.2** |
+| similar | selective | 0% / −2777 | 132 | 185.4 |
+| different | scratch | 0% / −3634 | 849 | 158.6 |
+| different | full | **0% / −3573** | 691 | 161.2 |
+| different | scaled β=0.5 | 0% / −3573 | **478** | 162.5 |
+| different | selective | 0% / −3539 | 519 | 152.3 |
+
+Findings (report Q6):
+- **Similar target: unambiguous positive transfer.** Full/scaled tables give
+  100% jumpstart success (slow, detouring around the 11 moved walls, hence
+  the −139 return) and hit the 90% success mark at the first measurable
+  window (ep 99) — ~7× faster than scratch (718).
+- **β does not change the jumpstart** — argmax is scale-invariant, so all
+  β>0 share the transferred greedy policy exactly (identical −138.56 in the
+  CSV). β only modulates *update dynamics*: smaller β = weaker prior that
+  TD updates overwrite faster.
+- **…which is why β=0.25 wins final performance on the similar target**
+  (190.2 vs full's 184.9): full-magnitude stale values linger; the
+  0.25-scaled table keeps the ordering (jumpstart) but re-fits cleanly.
+- **Different target: transfer ≠ free lunch.** Full-transfer jumpstart is
+  0% success, barely better than scratch (−3573 vs −3634) — the transferred
+  policy marches to the *old* key location. Learning speed still improves
+  modestly (691 vs 849), because the with-key half of the table and
+  unchanged corridors remain useful; scaled β=0.5 is best (478, −44%).
+- **Negative-transfer case, with the full arc** (`transfer_negative_case.csv`,
+  state (12,12), k=0, phase 0 — two cells from the old key, behind the
+  penalty cell (12,11)):
+  1. ep 0: transferred greedy = **left**, straight into the penalty cell
+     toward a key that no longer exists (target optimum: right, gap 14.3);
+  2. ep 100: q_left has *risen* to +13.5 — early bootstrapping from stale,
+     still-optimistic neighboring values briefly **amplifies** the error;
+  3. ep 500: reality extinguishes it — q_left collapses to −4.0 and the
+     greedy action flips to the target-optimal **right**;
+  4. ep 1000+: the converged policy no longer passes here; values flatten
+     into a stale near-tie (greedy drifts to `up`). Correction happens
+     where it matters, then the state is simply abandoned.
+- Honest limitation: with the fixed 2500-episode budget, final returns on
+  the different target (150–163) sit below its optimum (179.8) for *every*
+  scenario including scratch — adaptation, not full convergence, is what
+  the budget measures there.
+
 ## Report-question tracker
 
 1. **MDP + Markov property** — material ready (§1, §3).
@@ -359,7 +417,8 @@ Notes:
 4. **Best λ** — answered (§9): λ=0.7, with numbers.
 5. **Three states where model-free ≠ VI** — answered (§10): three
    mechanism-distinct samples with Q* gaps and local-structure analysis.
-6. **Transfer: similar vs different target** — pending (transfer steps).
+6. **Transfer: similar vs different target** — answered (§12): jumpstart /
+   speed / final tables, β analysis, negative-transfer case with correction arc.
 
 ## Notable design corrections (report material)
 
