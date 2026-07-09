@@ -268,6 +268,54 @@ def plot_visit_map(maze: MazeMap, visits: dict[State, int], title: str,
     _save(fig, path)
 
 
+DIVERGING_CMAP = LinearSegmentedColormap.from_list(
+    "div_red_blue", ["#e34948", "#f0efec", "#2a78d6"])
+DIVERGING_CMAP.set_bad(alpha=0.0)
+
+
+def plot_disagreement_map(maze: MazeMap, agent_policy: dict,
+                          agent_defined: set, vi_policy: dict, title: str,
+                          path: Path) -> None:
+    """Per-cell share of gate phases whose greedy action matches VI.
+
+    Blue = agrees in all phases, red = disagrees in all; cells the agent
+    never visited stay surface-colored.
+    """
+    fig, axes = plt.subplots(1, 2, figsize=(11, 5.6))
+    for ax, k in zip(axes, (0, 1)):
+        base = np.tile(_rgb(SURFACE), (maze.size, maze.size, 1))
+        frac = np.full((maze.size, maze.size), np.nan)
+        for r in range(maze.size):
+            for c in range(maze.size):
+                if maze.is_wall((r, c)):
+                    base[r, c] = _rgb(WALL_COLOR)
+                    continue
+                defined = [State(r, c, k, p) for p in range(maze.gate_period)
+                           if State(r, c, k, p) in agent_defined
+                           and vi_policy.get(State(r, c, k, p)) is not None]
+                if defined:
+                    frac[r, c] = (sum(agent_policy[s] == vi_policy[s]
+                                      for s in defined) / len(defined))
+        ax.imshow(base)
+        im = ax.imshow(np.ma.masked_invalid(frac), cmap=DIVERGING_CMAP,
+                       vmin=0.0, vmax=1.0)
+        _grid_lines(ax, maze.size)
+        for r in range(maze.size):
+            for c in range(maze.size):
+                cell = maze.grid[r][c]
+                if cell in CELL_LETTER:
+                    ax.text(c, r, CELL_LETTER[cell], color=INK, fontsize=7,
+                            ha="center", va="center",
+                            path_effects=[path_effects.withStroke(
+                                linewidth=1.6, foreground="white")])
+        ax.set_title("without key (k=0)" if k == 0 else "with key (k=1)")
+    cbar = fig.colorbar(im, ax=axes, shrink=0.85)
+    cbar.set_label("share of gate phases agreeing with VI", color=INK_2)
+    cbar.outline.set_edgecolor(GRID_COLOR)
+    fig.suptitle(f"{title} — unvisited cells left blank", color=INK)
+    _save(fig, path)
+
+
 def plot_sarsa_trace(step_trace: list[dict], trace_dump: list[dict],
                      gamma: float, lam: float, title: str,
                      path: Path) -> None:
@@ -312,9 +360,12 @@ def plot_sarsa_trace(step_trace: list[dict], trace_dump: list[dict],
 
 
 def write_csv(rows: list[dict], path: Path) -> None:
+    fieldnames: list[str] = []
+    for row in rows:  # union of keys, first-seen order (rows may differ)
+        fieldnames += [k for k in row if k not in fieldnames]
     path.parent.mkdir(parents=True, exist_ok=True)
     with open(path, "w", newline="", encoding="utf-8") as fh:
-        writer = csv.DictWriter(fh, fieldnames=list(rows[0].keys()))
+        writer = csv.DictWriter(fh, fieldnames=fieldnames, restval="")
         writer.writeheader()
         writer.writerows(rows)
 

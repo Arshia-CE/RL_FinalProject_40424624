@@ -20,18 +20,28 @@ from environments.generator import DEFAULT_CONFIG_PATH, MAPS_DIR, MazeMap
 from environments.maze import (EV_GATE_BLOCKED, EV_PENALTY, EV_WALL_HIT,
                                MazeEnv, State)
 from experiments.analysis import (FIGURES_DIR, RAW_DATA_DIR, plot_convergence,
-                                  plot_policy_arrows, plot_policy_phase_grid,
-                                  plot_sarsa_trace, plot_training_curves,
-                                  plot_value_heatmap, plot_visit_map,
-                                  rolling_mean, write_csv)
+                                  plot_disagreement_map, plot_policy_arrows,
+                                  plot_policy_phase_grid, plot_sarsa_trace,
+                                  plot_training_curves, plot_value_heatmap,
+                                  plot_visit_map, rolling_mean, write_csv)
 
 EVAL_EPISODES = 500
 EVAL_SEED = 999
 
 
-def evaluate_greedy(env: MazeEnv, table: dict[State, np.ndarray],
-                    episodes: int, seed: int) -> dict:
-    """Greedy rollouts from a (possibly partial) Q-table on the sparse env."""
+def table_policy(table: dict[State, np.ndarray]):
+    """Greedy action function over a (possibly partial) Q-table."""
+    return lambda s: 0 if s not in table else int(np.argmax(table[s]))
+
+
+def dict_policy(policy: dict[State, int | None]):
+    """Action function over an explicit policy dict (e.g. from VI)."""
+    return lambda s: policy.get(s) if policy.get(s) is not None else 0
+
+
+def evaluate_greedy(env: MazeEnv, action_fn, episodes: int,
+                    seed: int) -> dict:
+    """Deterministic rollouts of a policy on the sparse env."""
     from collections import Counter
     env.reset(seed=seed)
     events, returns, steps, wins = Counter(), [], [], 0
@@ -39,9 +49,8 @@ def evaluate_greedy(env: MazeEnv, table: dict[State, np.ndarray],
         state = env.reset()
         total, terminated, truncated = 0.0, False, False
         while not (terminated or truncated):
-            q = table.get(state)
-            action = 0 if q is None else int(np.argmax(q))
-            state, reward, terminated, truncated, info = env.step(action)
+            state, reward, terminated, truncated, info = env.step(
+                action_fn(state))
             total += reward
             events.update(info["events"])
         wins += terminated
@@ -165,7 +174,7 @@ def run_q_learning(config: dict) -> None:
                 # summary metrics (evaluation always on the sparse env)
                 eval_stats = evaluate_greedy(
                     MazeEnv(maze, config, reward_mode="sparse"),
-                    agent.Q, EVAL_EPISODES, EVAL_SEED)
+                    table_policy(agent.Q), EVAL_EPISODES, EVAL_SEED)
                 success = [row["success"] for row in history]
                 roll = rolling_mean(success, 100)
                 sustained = next((i + 99 for i, v in enumerate(roll)
@@ -276,7 +285,7 @@ def run_sarsa_lambda(config: dict) -> None:
 
             eval_stats = evaluate_greedy(
                 MazeEnv(maze, config, reward_mode="sparse"),
-                agent.Q, EVAL_EPISODES, EVAL_SEED)
+                table_policy(agent.Q), EVAL_EPISODES, EVAL_SEED)
             success = [row["success"] for row in history]
             roll = rolling_mean(success, 100)
             sustained = next((i + 99 for i, v in enumerate(roll) if v >= 0.9),
@@ -316,11 +325,184 @@ def run_sarsa_lambda(config: dict) -> None:
     print("  wrote 4 CSVs and 2 figures")
 
 
+def run_comparison(config: dict) -> None:
+    """Three-algorithm comparison on the same map and sparse reward."""
+    import time
+    maze = MazeMap.load(MAPS_DIR / "source.json")
+    gamma = config["value_iteration"]["gamma"]
+    qcfg, scfg = config["q_learning"], config["sarsa_lambda"]
+    best_lambda = 0.7  # best speed/stability balance from the lambda sweep
+    seed = qcfg["seeds"][0]
+
+    # solve/train the three canonical agents with wall-clock timing
+    t0 = time.perf_counter()
+    vi = ValueIteration(MazeEnv(maze, config, reward_mode="sparse"), gamma,
+                        threshold=config["value_iteration"]["convergence_threshold"],
+                        max_iterations=config["value_iteration"]["max_iterations"])
+    vi_res = vi.solve()
+    vi_time = time.perf_counter() - t0  # includes model construction
+
+    t0 = time.perf_counter()
+    ql = QLearningAgent(MazeEnv(maze, config, reward_mode="sparse", seed=seed),
+                        qcfg["alpha"], qcfg["gamma"], seed=seed)
+    ql_hist, _ = ql.train(qcfg["episodes"],
+                          epsilon_schedule("exponential",
+                                           qcfg["epsilon_start"],
+                                           qcfg["epsilon_end"],
+                                           qcfg["epsilon_decay_episodes"]))
+    ql_time = time.perf_counter() - t0
+
+    t0 = time.perf_counter()
+    sarsa = SarsaLambdaAgent(MazeEnv(maze, config, reward_mode="sparse",
+                                     seed=seed),
+                             scfg["alpha"], scfg["gamma"], best_lambda,
+                             trace_type=scfg["trace_type"],
+                             trace_prune=scfg["trace_prune"], seed=seed)
+    sarsa_hist, _, _ = sarsa.train(scfg["episodes"],
+                                   epsilon_schedule(
+                                       scfg["epsilon_decay_schedule"],
+                                       scfg["epsilon_start"],
+                                       scfg["epsilon_end"],
+                                       scfg["epsilon_decay_episodes"]))
+    sarsa_time = time.perf_counter() - t0
+
+    # exact Q* for action-gap analysis
+    v_star = np.array([vi_res.V[s] for s in vi.states])
+    q_star = vi._q_from(v_star)
+    v_pi = {"value_iteration": vi_res.V,
+            "q_learning": vi.evaluate_policy(ql.greedy_policy()),
+            "sarsa_lambda": vi.evaluate_policy(sarsa.greedy_policy())}
+    start = State(maze.start[0], maze.start[1], 0, 0)
+
+    penalty_adjacent = {(p[0] + dr, p[1] + dc) for p in maze.penalty_cells
+                        for dr, dc in ((-1, 0), (1, 0), (0, -1), (0, 1), (0, 0))}
+
+    agents = {
+        "value_iteration": (dict_policy(vi_res.policy), vi_time, None,
+                            vi_res.policy,
+                            {s for s, a in vi_res.policy.items()
+                             if a is not None}),
+        "q_learning": (table_policy(ql.Q), ql_time, ql_hist,
+                       ql.greedy_policy(), set(ql.visited_states())),
+        "sarsa_lambda": (table_policy(sarsa.Q), sarsa_time, sarsa_hist,
+                         sarsa.greedy_policy(), set(sarsa.visited_states())),
+    }
+    visit_counts = {"q_learning": ql.visits, "sarsa_lambda": sarsa.visits}
+
+    summary_rows, gap_records = [], {}
+    for name, (act, runtime, hist, policy, defined) in agents.items():
+        eval_stats = evaluate_greedy(MazeEnv(maze, config,
+                                             reward_mode="sparse"),
+                                     act, EVAL_EPISODES, EVAL_SEED)
+        row = {"algorithm": name, "runtime_seconds": round(runtime, 2),
+               "table_states": len(defined),
+               "model_file_kb": None, "episodes_to_90pct_success": None,
+               "env_steps_to_90pct": None, "total_env_steps": None,
+               **{f"eval_{k}": v for k, v in eval_stats.items()},
+               "v_pi_start": round(v_pi[name][start], 4),
+               "v_star_start": round(v_pi["value_iteration"][start], 4)}
+        if hist is not None:
+            success = [r["success"] for r in hist]
+            roll = rolling_mean(success, 100)
+            sustained = next((i + 99 for i, v in enumerate(roll) if v >= 0.9),
+                             None)
+            row["episodes_to_90pct_success"] = sustained
+            row["env_steps_to_90pct"] = sum(r["steps"]
+                                            for r in hist[:sustained])
+            row["total_env_steps"] = sum(r["steps"] for r in hist)
+            # agreement + action gaps on visited, non-terminal states
+            states = [s for s in defined if policy.get(s) is not None]
+            agree = sum(policy[s] == vi_res.policy[s] for s in states)
+            row["vi_agreement"] = round(agree / len(states), 4)
+            gaps = []
+            for s in states:
+                if policy[s] != vi_res.policy[s]:
+                    i = vi.index[s]
+                    gaps.append((float(q_star[i, vi_res.policy[s]]
+                                       - q_star[i, policy[s]]), s))
+            gap_values = np.array([g for g, _ in gaps])
+            gap_records[name] = gaps
+            row["disagreements"] = len(gaps)
+            row["median_action_gap"] = round(float(np.median(gap_values)), 3)
+            row["gap_below_0.5"] = round(float((gap_values < 0.5).mean()), 4)
+            pen = [s for s in states if (s.r, s.c) in penalty_adjacent]
+            row["penalty_adjacent_agreement"] = round(
+                sum(policy[s] == vi_res.policy[s] for s in pen) / len(pen), 4)
+        summary_rows.append(row)
+        print(f"  {name}: runtime {row['runtime_seconds']}s, "
+              f"eval return {eval_stats['mean_return']}, "
+              f"V^pi(start) {row['v_pi_start']}")
+
+    for row in summary_rows:
+        name = {"value_iteration": f"vi_sparse_gamma{gamma:g}.json",
+                "q_learning": "q_learning_sparse_exponential.json",
+                "sarsa_lambda": f"sarsa_lambda{best_lambda:g}_sparse.json"}
+        row["model_file_kb"] = round(
+            (MODELS_DIR / name[row["algorithm"]]).stat().st_size / 1024, 1)
+    write_csv(summary_rows, RAW_DATA_DIR / "comparison_summary.csv")
+
+    # three sample disagreement states, chosen by distinct mechanisms
+    samples = []
+    for label, source, pick in (
+            ("penalty_adjacent", "sarsa_lambda",
+             lambda gaps: max((g for g in gaps
+                               if (g[1].r, g[1].c) in penalty_adjacent
+                               and g[0] > 0.5),
+                              key=lambda g: visit_counts["sarsa_lambda"]
+                              .get(g[1], 0), default=None)),
+            ("near_tie", "q_learning",
+             lambda gaps: max((g for g in gaps if g[0] < 0.05),
+                              key=lambda g: visit_counts["q_learning"]
+                              .get(g[1], 0), default=None)),
+            ("large_gap", "q_learning",
+             lambda gaps: max(gaps, key=lambda g: g[0], default=None))):
+        found = pick(gap_records[source])
+        if found is None:
+            continue
+        gap, s = found
+        i = vi.index[s]
+        agent = ql if source == "q_learning" else sarsa
+        agent_policy = agent.greedy_policy()
+        samples.append({
+            "label": label, "algorithm": source,
+            "r": s.r, "c": s.c, "has_key": s.has_key, "phase": s.phase,
+            "visits": visit_counts[source].get(s, 0),
+            "vi_action": vi_res.policy[s], "agent_action": agent_policy[s],
+            "q_star_vi_action": round(float(q_star[i, vi_res.policy[s]]), 3),
+            "q_star_agent_action": round(float(q_star[i, agent_policy[s]]), 3),
+            "action_gap": round(gap, 3),
+            "agent_q_values": " ".join(f"{v:.2f}" for v in agent.Q[s]),
+        })
+        print(f"  sample [{label}] {source}: s=({s.r},{s.c},k={s.has_key},"
+              f"p={s.phase}) visits={samples[-1]['visits']} "
+              f"VI={samples[-1]['vi_action']} agent="
+              f"{samples[-1]['agent_action']} gap={gap:.3f}")
+    write_csv(samples, RAW_DATA_DIR / "comparison_sample_states.csv")
+
+    plot_disagreement_map(maze, ql.greedy_policy(),
+                          set(ql.visited_states()), vi_res.policy,
+                          "Q-Learning greedy policy vs Value Iteration",
+                          FIGURES_DIR / "comparison_disagreement_qlearning.png")
+    plot_disagreement_map(maze, sarsa.greedy_policy(),
+                          set(sarsa.visited_states()), vi_res.policy,
+                          f"SARSA(λ={best_lambda:g}) greedy policy vs "
+                          f"Value Iteration",
+                          FIGURES_DIR / "comparison_disagreement_sarsa.png")
+    plot_training_curves(
+        {"Q-Learning": [ql_hist], f"SARSA(λ={best_lambda:g})": [sarsa_hist]},
+        [("success", "success rate"), ("return", "episode return"),
+         ("steps", "steps per episode")],
+        "Model-free methods, sparse reward, exponential decay",
+        FIGURES_DIR / "comparison_learning_curves.png")
+    print("  wrote 2 CSVs and 3 figures")
+
+
 EXPERIMENTS = {
     "vi": run_value_iteration,
     "q_learning": run_q_learning,
     "sarsa_lambda": run_sarsa_lambda,
-    # added step by step: comparison, transfer
+    "comparison": run_comparison,
+    # added in the transfer step: transfer
 }
 
 

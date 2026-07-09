@@ -265,16 +265,73 @@ distant states very slowly).
   straight lines on the log axis — exactly (γλ)ᵗ = 0.855ᵗ decay, each
   later δ updating them with that weight.
 
+## 10. Three-algorithm comparison (run_experiments.py: comparison)
+
+Data: `comparison_summary.csv`, `comparison_sample_states.csv`.
+Figures: `comparison_disagreement_qlearning.png`,
+`comparison_disagreement_sarsa.png`, `comparison_learning_curves.png`.
+Canonical agents: VI γ=0.95; QL sparse/exponential seed 7;
+SARSA λ=0.7 (best from §9) seed 7. Same map, same sparse reward.
+
+| metric | VI | Q-Learning | SARSA(0.7) |
+|---|---|---|---|
+| runtime | **0.11 s** | 8.5 s | 54.8 s |
+| env samples to 90% success | — (model access) | 612,908 | **526,282** |
+| model file | **103 KB** (V+π) | 271 KB | 274 KB |
+| eval return / steps | **191.6 / 43.4** | 190.0 / 45.6 | 190.6 / 44.4 |
+| V^π(start) (exact, model) | **9.60 = V\*** | 5.93 | 7.83 |
+| VI agreement (visited) | — | 51.4% | 51.9% |
+| median action gap on disagreements | — | 4.23 | 4.39 |
+| penalty entries / eval ep | 0.260 | 0.236 | **0.188** |
+| penalty-adjacent agreement | — | 67.3% | 63.7% |
+
+Analysis points:
+- **Runtime vs samples (report Q3):** VI is ~77× faster than QL *because* it
+  consumes the exact transition model (2796×4 outcome distributions);
+  the model-free methods pay instead in experience: ~500–600k env steps.
+  SARSA's trace loop costs ~6× QL's wall-clock per run but buys ~14% fewer
+  samples to 90% — compute vs sample efficiency trade.
+- **Exact policy values beat rollouts for grading policies:** value loss
+  V*(start) − V^π(start) is 3.67 (QL) vs **1.77 (SARSA(0.7))** despite
+  near-identical raw agreement (~51%) — agreement % is a weak metric
+  (§6 near-ties); the λ=0.7 traces yield a genuinely better policy.
+- **On-policy risk behavior (report Q2):** SARSA enters penalty cells
+  least often in evaluation (0.188/ep vs QL 0.236, VI 0.260) and shows
+  *lower* penalty-adjacent agreement with VI (63.7% vs 67.3%) — i.e. its
+  deviations near danger are systematic (safer detours), not noise: during
+  on-policy training its own ε-greedy slips into penalty cells are priced
+  into Q. Both agents agree with VI *more* near penalties than globally
+  (67/64% vs 51%) — the action gaps there are sharp, not near-ties.
+- **Where disagreements live:** only ~19% of disagreements are near-ties
+  (gap < 0.5); the rest sit in rarely-visited, off-path states whose large
+  gaps barely affect V^π(start).
+
+Three sample states (`comparison_sample_states.csv`, report Q5):
+1. **(2,1), k=0, phase 4 — penalty-adjacent, 669 visits.** VI: right;
+   SARSA: left (gap 3.13). The cell sits beside penalty (3,1); SARSA
+   learned the detour that keeps slip-risk away from the −10 cell — the
+   on-policy safety margin, exhibit A for Q2.
+2. **(15,15), k=1, phase 1 — inside the chamber, 1418 visits.** VI: down;
+   QL: right; gap **exactly 0.000** — two symmetric 2-step routes to the
+   goal; the "disagreement" is a pure tie-break formality.
+3. **(14,12), k=1, phase 0 — standing ON the gate, 5 visits.** VI: right
+   (the door is one step away); QL: down; gap 19.7. Agents rarely *stand*
+   on the gate (they pass through), so with 5 visits the estimate never
+   learned the doorway — large errors concentrate where data is scarce.
+- Disagreement maps: agreement (blue) hugs the mission corridors where
+  visits concentrate; red scatters off-path; chamber blank at k=0
+  (unreachable). Spatial pattern = the visit-density story in one figure.
+
 ## Report-question tracker
 
 1. **MDP + Markov property** — material ready (§1, §3).
-2. **on- vs off-policy near danger** — pending (Q-Learning/SARSA steps);
-   penalty cell (12,11) beside the key is the designated observation zone.
-3. **Why VI needs the model** — material forming (§5; `transitions()` vs
-   sampled `step()`); finish after model-free steps for the contrast.
+2. **on- vs off-policy near danger** — answered (§10): SARSA's measured
+   safety margin (penalty entries 0.188 vs 0.236/ep; sample state 1).
+3. **Why VI needs the model** — answered (§10): 0.11 s with the model vs
+   ~500–600k env samples without; advantages/limits table material ready.
 4. **Best λ** — answered (§9): λ=0.7, with numbers.
-5. **Three states where model-free ≠ VI** — pending (comparison step);
-   near-tie states from §5 are candidates.
+5. **Three states where model-free ≠ VI** — answered (§10): three
+   mechanism-distinct samples with Q* gaps and local-structure analysis.
 6. **Transfer: similar vs different target** — pending (transfer steps).
 
 ## Notable design corrections (report material)

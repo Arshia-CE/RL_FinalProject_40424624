@@ -113,6 +113,26 @@ class ValueIteration:
                 * (self._reward + self.gamma * self._cont * V[self._next])
                 ).sum(axis=2)
 
+    def evaluate_policy(self,
+                        policy: dict[State, int | None]) -> dict[State, float]:
+        """Iterative policy evaluation V^pi under the exact model (states the
+        policy does not cover fall back to action 0)."""
+        actions = np.array([policy.get(s) if policy.get(s) is not None else 0
+                            for s in self.states], dtype=np.int64)
+        rows = np.arange(len(self.states))
+        prob = self._prob[rows, actions]
+        reward = self._reward[rows, actions]
+        nxt = self._next[rows, actions]
+        cont = self._cont[rows, actions]
+        V = np.zeros(len(self.states))
+        for _ in range(self.max_iterations):
+            V_new = (prob * (reward + self.gamma * cont * V[nxt])).sum(axis=1)
+            delta = float(np.max(np.abs(V_new - V)))
+            V = V_new
+            if delta < self.threshold:
+                break
+        return {s: float(V[i]) for i, s in enumerate(self.states)}
+
     def solve(self) -> VIResult:
         V = np.zeros(len(self.states))
         deltas: list[float] = []
