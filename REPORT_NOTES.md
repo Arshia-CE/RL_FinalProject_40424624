@@ -153,6 +153,51 @@ arbitrarily. Consequence for the comparison section: report **raw agreement**
 correct if Q*(s, a_QL) is within tolerance of V*(s)) and/or the policy's
 value loss V*(start) − V^π(start); analyze 2–3 near-tie states explicitly.
 
+## 7. Q-Learning experiments (run_experiments.py: q_learning)
+
+Data: `q_learning_training.csv` (12 runs × 5000 episodes),
+`q_learning_summary.csv`, `q_update_trace.csv` (full traced episode 2500);
+models `q_learning_{sparse,shaped}_{linear,exponential}.json`.
+Figures: `q_learning_decay_schedules.png`, `q_learning_reward_shaping.png`,
+`q_learning_visit_map.png`. 2 schedules × 2 reward modes × 3 seeds
+{7, 21, 42}; evaluation always on the sparse env (500 greedy episodes,
+seed 999) so returns are comparable.
+
+| run | episodes to 90% success (mean of seeds) | eval return | VI agreement |
+|---|---|---|---|
+| sparse / linear | ≈1546 | 190.8–191.6 | 57.9–58.6% |
+| sparse / exponential | ≈1099 | 189.4–190.5 | 51.2–51.9% |
+| shaped / linear | ≈890 | 190.4–190.8 | 73.0–75.0% |
+| shaped / exponential | ≈380 | 189.2–190.6 | 67.4–67.8% |
+
+Findings:
+- **Decay schedules:** exponential reaches 90% success ~1.4× earlier than
+  linear (ε collapses early, exploiting sooner), but linear's longer
+  exploration buys visibly higher VI agreement (58% vs 51%) — broader,
+  more uniform coverage. Both end at the same asymptote (100% success,
+  ~190 return). Trade-off: learning speed vs state-space coverage.
+- **Shaping = ~3× jumpstart, same destination:** shaped/exponential hits 90%
+  success at ep ≈380 vs ≈1099 sparse — and the key-found rate hits 1.0
+  almost immediately (potential gradient points at the key). Final eval
+  returns are statistically identical across all 12 runs (189.2–191.6,
+  VI optimum 191.6): the potential-based-invariance prediction confirmed
+  empirically (report: shaping sped learning up *without* changing final
+  performance).
+- **No unwanted behavior from shaping:** eval penalty entries/ep 0.21–0.27,
+  wall hits/ep 2.2–2.5, gate bumps/ep 0.22–0.45 — indistinguishable between
+  sparse and shaped; steps/ep ~44–46 everywhere (no loops, no reward
+  farming, no over-avoidance of penalty cells).
+- **Nominal policies still differ:** sparse vs shaped greedy policies agree
+  on only 49.3% of jointly-visited states while achieving identical
+  returns — the near-tie effect from §6 again; nominal action agreement is
+  a weak lens on policy quality.
+- **Visit-map artifacts worth explaining in the report:**
+  (a) the key cell has zero k=0 visits — entering it flips k to 1, so
+  (12,10,k=0) is never a *decision* state; (b) the chamber interior has
+  zero k=0 visits — unreachable without the key, matching the design;
+  (c) in k=1 the gate/door cells are among the darkest — waiting and
+  funneling at the bottleneck.
+
 ## Report-question tracker
 
 1. **MDP + Markov property** — material ready (§1, §3).

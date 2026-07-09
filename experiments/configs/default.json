@@ -56,7 +56,9 @@
         "epsilon_start": 1.0,
         "epsilon_end": 0.05,
         "epsilon_decay_episodes": 4000,
-        "epsilon_decay_schedules": ["linear", "exponential"]
+        "epsilon_decay_schedules": ["linear", "exponential"],
+        "seeds": [7, 21, 42],
+        "trace_episode": 2500
     },
 
     "sarsa_lambda": {

@@ -198,6 +198,76 @@ def plot_convergence(deltas_by_gamma: dict[float, list[float]],
     _save(fig, path)
 
 
+def rolling_mean(values, window: int) -> np.ndarray:
+    return np.convolve(np.asarray(values, dtype=float),
+                       np.ones(window) / window, mode="valid")
+
+
+def plot_training_curves(runs: dict[str, list[list[dict]]],
+                         metrics: list[tuple[str, str]], title: str,
+                         path: Path, window: int = 100) -> None:
+    """Seed-averaged rolling curves; runs = {label: [per-seed history rows]}."""
+    fig, axes = plt.subplots(1, len(metrics),
+                             figsize=(4.4 * len(metrics), 3.5))
+    for (key, ylabel), ax in zip(metrics, np.atleast_1d(axes)):
+        for (label, seed_histories), color in zip(runs.items(), CATEGORICAL):
+            curves = np.array([[row[key] for row in h]
+                               for h in seed_histories], dtype=float)
+            smoothed = np.array([rolling_mean(c, window) for c in curves])
+            xs = np.arange(window - 1, curves.shape[1])
+            mean, std = smoothed.mean(axis=0), smoothed.std(axis=0)
+            ax.plot(xs, mean, color=color, linewidth=2, label=label)
+            if len(seed_histories) > 1:
+                ax.fill_between(xs, mean - std, mean + std, color=color,
+                                alpha=0.18, linewidth=0)
+        ax.set_xlabel("episode")
+        ax.set_ylabel(ylabel)
+        ax.grid(color=GRID_COLOR, linewidth=0.5)
+        ax.set_axisbelow(True)
+        for side in ("top", "right"):
+            ax.spines[side].set_visible(False)
+    np.atleast_1d(axes)[0].legend(frameon=False, fontsize=8,
+                                  labelcolor=INK_2)
+    fig.suptitle(f"{title} (rolling mean, window {window})", color=INK)
+    fig.tight_layout()
+    _save(fig, path)
+
+
+def plot_visit_map(maze: MazeMap, visits: dict[State, int], title: str,
+                   path: Path) -> None:
+    """State-visit heatmap on log scale, split by key possession."""
+    grids = []
+    for k in (0, 1):
+        grid = np.full((maze.size, maze.size), np.nan)
+        for r in range(maze.size):
+            for c in range(maze.size):
+                if not maze.is_wall((r, c)):
+                    total = sum(visits.get(State(r, c, k, p), 0)
+                                for p in range(maze.gate_period))
+                    grid[r, c] = np.log10(total + 1)
+        grids.append(np.ma.masked_invalid(grid))
+    vmax = max(g.max() for g in grids)
+    fig, axes = plt.subplots(1, 2, figsize=(11, 5.4))
+    for ax, grid, k in zip(axes, grids, (0, 1)):
+        im = ax.imshow(grid, cmap=VALUE_CMAP, vmin=0, vmax=vmax)
+        _grid_lines(ax, maze.size)
+        for pos in ([tuple(maze.start), tuple(maze.key), tuple(maze.door),
+                     tuple(maze.goal), tuple(maze.gate)]
+                    + [tuple(p) for p in maze.penalty_cells]):
+            ch = CELL_LETTER[maze.grid[pos[0]][pos[1]]]
+            ax.text(pos[1], pos[0], ch, color=INK, fontsize=7, ha="center",
+                    va="center",
+                    path_effects=[path_effects.withStroke(
+                        linewidth=1.6, foreground="white")])
+        ax.set_title("without key (k=0)" if k == 0 else "with key (k=1)")
+    cbar = fig.colorbar(im, ax=axes, shrink=0.85)
+    cbar.set_label("log₁₀(visits + 1), summed over gate phases",
+                   color=INK_2)
+    cbar.outline.set_edgecolor(GRID_COLOR)
+    fig.suptitle(title, color=INK)
+    _save(fig, path)
+
+
 def write_csv(rows: list[dict], path: Path) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     with open(path, "w", newline="", encoding="utf-8") as fh:
