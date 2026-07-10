@@ -41,9 +41,13 @@ RL_FinalProject_40424624/
 │   └── sarsa_lambda.py
 ├── transfer/              # Transfer-learning scenarios (Q-Learning only)
 │   └── transfer_learning.py
-├── gui/                   # Interactive Tkinter visualization
-│   ├── app.py
-│   └── renderer.py
+├── gui/                   # "MazeMario" — interactive Tkinter game GUI
+│   ├── app.py             # Window assembly + game loop
+│   ├── controller.py      # Game sessions: WATCH (trained) / TRAIN (live)
+│   ├── renderer.py        # Pixel game board + animation engine
+│   ├── hud.py             # HUD, control bar, menus, overlays
+│   ├── sprites.py         # Pixel-art sprites (hero, dragon, princess, ...)
+│   └── theme.py           # Palette, fonts, timing
 ├── experiments/
 │   ├── run_experiments.py # Dispatcher: runs all or selected experiments
 │   ├── common.py          # Config loading + policy evaluation helpers
@@ -92,7 +96,34 @@ python -m pytest tests/
 python environments/generator.py
 ```
 
-_(Sections below are filled in as the corresponding parts are implemented.)_
+## The GUI — MazeMario
+
+`python main.py` launches a retro game-style visualization in which the agent
+plays the maze. It boots into a title menu with three selectors:
+
+- **SELECT WORLD** — the source maze or either transfer target
+  (`environments/maps/*.json`, the exact maps used by all experiments).
+- **HERO BRAIN** — Value Iteration (solved exactly on the fly for the chosen
+  world), or the trained Q-Learning / SARSA(λ=0.7) tables loaded from
+  `results/models/`. Picking a trained table on Worlds 2/3 lets you watch
+  transfer behavior (including negative transfer) live.
+- **MODE** — WATCH (the policy plays greedily) or TRAIN (a fresh Q-Learning /
+  SARSA(λ) learner trains in real time; at speeds ≥ 2× it fast-forwards
+  whole episodes per frame, ~60+ episodes/s).
+
+In-game controls: PAUSE (menu), PLAY/PAUSE, STEP (single step), RESTART,
+animation-speed slider (0.5–4×), and POLICY — an overlay of greedy-action
+arrows for the agent's current key status and gate phase, updating live
+during training. The HUD shows score (cumulative reward), steps/step-cap,
+key status, the dragon-gate countdown, episode number, ε, and the recent
+success rate.
+
+Everything on the board is diegetic: walls are bricks, penalty cells are
+thorn-ringed pits the hero falls into (with a floating −10), the key bobs
+and sparkles, the locked door slides open, reaching the princess wins the
+level — and the periodic gate is a dragon that emerges from its den on
+closed phases and retreats on open ones, with bumps, popups and win/timeout
+screens animating every logged environment event.
 
 ## Reproducing the results
 

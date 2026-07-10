@@ -77,6 +77,8 @@ class MazeMarioApp:
 
         self._load_board()
         self.root.update_idletasks()
+        x = (self.root.winfo_screenwidth() - self.root.winfo_reqwidth()) // 2
+        self.root.geometry(f"+{max(0, x)}+4")
         self._show_menu("START")
         self.root.after(theme.TICK_MS, self._tick)
 

@@ -192,9 +192,10 @@ class GameSession:
             self.outcome = "clear"
         elif truncated:
             self.outcome = "timeout"
-        if self.mode == "train" and self.outcome:
-            self.trained_episodes += 1
+        if self.outcome:
             self.recent.append(int(terminated))
+            if self.mode == "train":
+                self.trained_episodes += 1
         events = info["events"]
         return {
             "prev": prev, "next": nxt, "reward": reward,
@@ -232,7 +233,8 @@ class GameSession:
         return self._schedule(self.trained_episodes)
 
     def win_rate(self) -> float | None:
-        if self.mode != "train" or not self.recent:
+        """Success rate over the recent episodes (both modes)."""
+        if not self.recent:
             return None
         return sum(self.recent) / len(self.recent)
 

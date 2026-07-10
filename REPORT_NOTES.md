@@ -411,6 +411,40 @@ Findings (report Q6):
   scenario including scratch — adaptation, not full convergence, is what
   the budget measures there.
 
+## 13. GUI — "MazeMario" (gui/)
+
+Tkinter, custom pixel design; six modules (theme / sprites / renderer /
+controller / hud / app). No threads: a cooperative `after()` game loop
+(~30 fps) drives env steps, animations and HUD. WATCH mode replays trained
+policies (VI solved live per world; QL/SARSA tables loaded from
+results/models); TRAIN mode runs a fresh learner with the config's ε
+schedule — paced (animated) below 2×, fast-forward (whole headless episodes
+per frame via agent.train) at 2–4×.
+
+Spec-requirement coverage (report table material):
+| spec control | GUI element |
+|---|---|
+| algorithm + source/target env selection | HERO BRAIN + SELECT WORLD menus |
+| train vs evaluate mode | MODE: TRAIN / WATCH |
+| start/stop/resume/reset/re-run | START, PLAY/PAUSE, RESTART (+STEP) |
+| animation speed | 0.5–4× slider (≥2× = training fast-forward) |
+| policy display toggle | POLICY overlay (greedy arrows for the agent's *current* key/phase, live during training) |
+| live info: episode, steps, reward, ε, key, recent success | HUD: EP · STEPS n/cap · SCORE · ε · KEY · WIN (last-100) |
+
+Event visibility (all spec events are diegetic animations): wall hit =
+bump + red −5 popup; penalty = hero falls into a thorn-ringed pit, red −10;
+key = sparkle burst, +50, HUD GOT!, door keyhole appears unlockable; locked
+door = bump −2; door pass = wooden panel slides open; goal = +200, hearts,
+COURSE CLEAR screen; timeout = TIME UP screen; **periodic gate = a dragon
+that rises from its den on closed phases and retreats on open ones** (HUD
+shows IN·n/OUT·n countdown) — the chosen dynamic feature is thus the most
+visually prominent object in the game, satisfying "must be clearly shown in
+the GUI".
+- Pedagogical extra: selecting the World-1-trained Q table on World 3 shows
+  negative transfer live (the hero marches toward the removed key).
+- Watching TRAIN mode: ~60+ eps/s fast-forward reached 56% win at ep ~880
+  and 89% by ep ~1100 in a live session — matches the headless curves (§7).
+
 ## Report-question tracker
 
 1. **MDP + Markov property** — material ready (§1, §3).
