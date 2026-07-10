@@ -28,7 +28,9 @@ class MazeMarioApp:
         self.playing = True
         self.paused = True   # boot into the title screen
         self.speed = 1.5
+        self.show_policy = False
         self._acc = 0.0
+        self._policy_tick = 0
 
         content = tk.Frame(self.root, bg=theme.SKY)
         content.pack(padx=14, pady=(12, 8))
@@ -49,7 +51,8 @@ class MazeMarioApp:
         self.controls = ControlBar(content, on_toggle=self._toggle_play,
                                    on_step=self._step_once,
                                    on_restart=self._restart,
-                                   on_speed=self._set_speed)
+                                   on_speed=self._set_speed,
+                                   on_policy=self._toggle_policy)
         self.controls.frame.pack(fill="x", pady=(10, 0))
 
         footer = tk.Frame(content, bg=theme.SKY)
@@ -68,11 +71,13 @@ class MazeMarioApp:
             "resume": self._resume,
             "restart": self._restart,
             "select_world": self._select_world,
+            "select_brain": self._select_brain,
+            "select_mode": self._select_mode,
         })
 
         self._load_board()
         self.root.update_idletasks()
-        self.menu.show(self.session.world, "START")
+        self._show_menu("START")
         self.root.after(theme.TICK_MS, self._tick)
 
     # wiring
@@ -92,18 +97,33 @@ class MazeMarioApp:
         self.hud.update(round(self.session.score),
                         f"{self.session.steps}/{self.session.step_cap}",
                         self.session.has_key, self.session.gate_open(),
-                        self.session.gate_countdown())
+                        self.session.gate_countdown(),
+                        self.session.episode_number(),
+                        self.session.current_epsilon(),
+                        self.session.win_rate())
+
+    def _refresh_policy(self) -> None:
+        if self.show_policy:
+            self.board.draw_policy(self.session.policy_action)
+        else:
+            self.board.draw_policy(None)
 
     # controls
 
+    def _show_menu(self, resume_label: str) -> None:
+        self.menu.show(self.session.world, resume_label, self.session.brain,
+                       self.session.mode)
+
     def _open_menu(self) -> None:
         self.paused = True
-        label = ("PLAY AGAIN" if self.session.outcome
-                 else ("RESUME" if self.session.steps else "START"))
-        self.menu.show(self.session.world, label)
+        watch_done = self.session.mode == "watch" and self.session.outcome
+        label = ("PLAY AGAIN" if watch_done
+                 else ("RESUME" if self.session.steps
+                       or self.session.mode == "train" else "START"))
+        self._show_menu(label)
 
     def _resume(self) -> None:
-        if self.session.outcome:
+        if self.session.mode == "watch" and self.session.outcome:
             self._reset_run()
         self.menu.hide()
         self.paused = False
@@ -119,15 +139,36 @@ class MazeMarioApp:
 
     def _reset_run(self) -> None:
         self.overlay.hide()
-        self.session.reset()
+        self.session.restart()
         self._load_board()
+        self._refresh_policy()
         self._acc = 0.0
 
     def _select_world(self, key: str) -> None:
         self.overlay.hide()
         self.session.load_world(key)   # solves VI for new worlds (fast)
         self._load_board()
-        self.menu.show(key, "START")
+        self._refresh_policy()
+        self._show_menu("START")
+
+    def _select_brain(self, key: str) -> None:
+        self.overlay.hide()
+        self.session.set_brain(key)
+        self._load_board()
+        self._refresh_policy()
+        self._show_menu("START")
+
+    def _select_mode(self, key: str) -> None:
+        self.overlay.hide()
+        self.session.set_mode(key)
+        self._load_board()
+        self._refresh_policy()
+        self._show_menu("START")
+
+    def _toggle_policy(self) -> None:
+        self.show_policy = not self.show_policy
+        self.controls.set_policy_on(self.show_policy)
+        self._refresh_policy()
 
     def _toggle_play(self) -> None:
         self.playing = not self.playing
@@ -146,11 +187,21 @@ class MazeMarioApp:
 
     def _tick(self) -> None:
         dt = theme.TICK_MS / 1000.0
-        if not self.paused and self.playing and not self.session.outcome:
-            self._acc += theme.TICK_MS
-            if self._acc >= theme.STEP_MS / self.speed:
-                self._acc = 0.0
-                self._do_step()
+        fast_train = self.session.mode == "train" and self.speed >= 2.0
+        if not self.paused and self.playing:
+            if fast_train:
+                self.session.run_batch(int(self.speed))
+                self.board.new_episode()
+                self.board.set_gate_open(self.session.gate_open())
+                self._update_hud()
+                self._policy_tick += 1
+                if self.show_policy and self._policy_tick % 6 == 0:
+                    self._refresh_policy()
+            elif not self.session.outcome:
+                self._acc += theme.TICK_MS
+                if self._acc >= theme.STEP_MS / self.speed:
+                    self._acc = 0.0
+                    self._do_step()
         self.board.tick(dt)
         self.root.after(theme.TICK_MS, self._tick)
 
@@ -192,12 +243,28 @@ class MazeMarioApp:
                              theme.POP_PIT)
         if event["door"]:
             self.board.open_door()
-        if event["goal"]:
+        if event["episode_end"]:
+            # training rolls straight into the next episode
+            if event["goal"]:
+                self.board.popup(nxt, f"{rewards['goal']:+d}", theme.GOLD)
+            delay = 900 if event["goal"] else 250
+            self.root.after(delay, self._next_training_episode)
+        elif event["goal"]:
             self.board.popup(nxt, f"{rewards['goal']:+d}", theme.GOLD)
             self.board.celebrate()
             self.root.after(1400, self._show_outcome)
         elif event["outcome"] == "timeout":
             self.root.after(400, self._show_outcome)
+        self.board.set_gate_open(self.session.gate_open())
+        if self.show_policy:
+            self._refresh_policy()
+        self._update_hud()
+
+    def _next_training_episode(self) -> None:
+        if self.session.mode != "train" or self.menu.visible:
+            return
+        self.session.begin_next_episode()
+        self.board.new_episode()
         self.board.set_gate_open(self.session.gate_open())
         self._update_hud()
 

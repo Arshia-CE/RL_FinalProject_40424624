@@ -6,7 +6,7 @@ from __future__ import annotations
 import tkinter as tk
 
 from gui import theme
-from gui.controller import WORLDS
+from gui.controller import BRAINS, MODES, WORLDS
 
 
 def pixel_button(parent, text, bg, fg, command, size=8,
@@ -46,6 +46,9 @@ class HudBar:
         self.steps = self._stat(holder, "STEPS")
         self.key = self._stat(holder, "KEY")
         self.dragon = self._stat(holder, "DRAGON")
+        self.episode = self._stat(holder, "EP")
+        self.epsilon = self._stat(holder, "ε")
+        self.win = self._stat(holder, "WIN")
         pixel_button(inner, "PAUSE", theme.GOLD, theme.INK,
                      on_pause).pack(side="right", padx=8, pady=4)
 
@@ -59,7 +62,8 @@ class HudBar:
         value.pack()
         return value
 
-    def update(self, score, steps_text, has_key, gate_open, countdown):
+    def update(self, score, steps_text, has_key, gate_open, countdown,
+               episode, epsilon, win_rate):
         self.score.config(text=str(score))
         self.steps.config(text=steps_text)
         if has_key:
@@ -70,10 +74,18 @@ class HudBar:
             self.dragon.config(text=f"IN·{countdown}", fg=theme.GREEN)
         else:
             self.dragon.config(text=f"OUT·{countdown}", fg=theme.POP_BAD)
+        self.episode.config(text=str(episode))
+        self.epsilon.config(
+            text="---" if epsilon is None else f"{epsilon:.2f}",
+            fg=theme.DISABLED if epsilon is None else theme.WHITE)
+        self.win.config(
+            text="---" if win_rate is None else f"{win_rate:.0%}",
+            fg=theme.DISABLED if win_rate is None else theme.GREEN)
 
 
 class ControlBar:
-    def __init__(self, parent, on_toggle, on_step, on_restart, on_speed):
+    def __init__(self, parent, on_toggle, on_step, on_restart, on_speed,
+                 on_policy):
         self.frame = _panel(parent)
         inner = self.frame.inner
         self.play = pixel_button(inner, "PAUSE", theme.GREEN, theme.INK,
@@ -83,6 +95,9 @@ class ControlBar:
                      on_step).pack(side="left", padx=4, pady=4)
         pixel_button(inner, "RESTART", theme.RED, theme.WHITE,
                      on_restart).pack(side="left", padx=4, pady=4)
+        self.policy = pixel_button(inner, "POLICY", theme.HUD_BORDER,
+                                   theme.LABEL, on_policy)
+        self.policy.pack(side="left", padx=4, pady=4)
         right = tk.Frame(inner, bg=theme.HUD_BG)
         right.pack(side="right", padx=10)
         tk.Label(right, text="SPEED", font=theme.pixel_font(7),
@@ -101,6 +116,13 @@ class ControlBar:
 
     def set_playing(self, playing: bool) -> None:
         self.play.button.config(text="PAUSE" if playing else "PLAY")
+
+    def set_policy_on(self, on: bool) -> None:
+        self.policy.button.config(
+            bg=theme.GOLD if on else theme.HUD_BORDER,
+            fg=theme.INK if on else theme.LABEL,
+            activebackground=theme.GOLD if on else theme.HUD_BORDER,
+            activeforeground=theme.INK if on else theme.LABEL)
 
 
 class BoardOverlay:
@@ -162,7 +184,8 @@ class PauseMenu:
         self.frame: tk.Frame | None = None
         self._blink_job = None
 
-    def show(self, selected_world: str, resume_label: str) -> None:
+    def show(self, selected_world: str, resume_label: str,
+             selected_brain: str = "vi", selected_mode: str = "watch") -> None:
         self.hide()
         bg = theme.OVERLAY_BG
         self.frame = tk.Frame(self.root, bg=bg)
@@ -177,23 +200,26 @@ class PauseMenu:
                           fill=theme.RED)
         title.create_text(310, 42, text="MAZEMARIO", font=font,
                           fill=theme.GOLD)
-        title.pack(pady=(46, 2))
+        title.pack(pady=(30, 2))
         tk.Label(self.frame, text="DYNAMIC MAZE · RL PROJECT 40424624",
                  font=theme.pixel_font(8), bg=bg,
-                 fg=theme.LABEL).pack(pady=(0, 18))
+                 fg=theme.LABEL).pack(pady=(0, 14))
 
-        gold = tk.Frame(self.frame, bg=theme.GOLD)
-        gold.pack(pady=6)
-        box = tk.Frame(gold, bg=theme.HUD_BG)
-        box.pack(padx=4, pady=4)
-        tk.Label(box, text="SELECT WORLD", font=theme.pixel_font(8),
-                 bg=theme.HUD_BG, fg=theme.LABEL,
-                 anchor="w").pack(fill="x", padx=14, pady=(12, 6))
-        for key, world in WORLDS.items():
-            self._world_row(box, key, world, key == selected_world)
+        columns = tk.Frame(self.frame, bg=bg)
+        columns.pack(pady=4)
+        left = tk.Frame(columns, bg=bg)
+        left.pack(side="left", padx=5, anchor="n")
+        right = tk.Frame(columns, bg=bg)
+        right.pack(side="left", padx=5, anchor="n")
+        self._select_box(left, "SELECT WORLD", WORLDS, selected_world,
+                         self.callbacks["select_world"])
+        self._select_box(right, "HERO BRAIN", BRAINS, selected_brain,
+                         self.callbacks["select_brain"])
+        self._select_box(right, "MODE", MODES, selected_mode,
+                         self.callbacks["select_mode"])
 
         buttons = tk.Frame(self.frame, bg=bg)
-        buttons.pack(pady=20)
+        buttons.pack(pady=14)
         pixel_button(buttons, resume_label, theme.GOLD, theme.INK,
                      self.callbacks["resume"], size=10).pack(side="left",
                                                              padx=8)
@@ -207,21 +233,32 @@ class PauseMenu:
         self.hint.pack(pady=10)
         self._blink()
 
-    def _world_row(self, box, key, world, selected) -> None:
+    def _select_box(self, parent, title, items, selected, callback) -> None:
+        gold = tk.Frame(parent, bg=theme.GOLD)
+        gold.pack(pady=6, fill="x")
+        box = tk.Frame(gold, bg=theme.HUD_BG)
+        box.pack(padx=4, pady=4, fill="x")
+        tk.Label(box, text=title, font=theme.pixel_font(8),
+                 bg=theme.HUD_BG, fg=theme.LABEL,
+                 anchor="w").pack(fill="x", padx=10, pady=(8, 2))
+        for key, item in items.items():
+            self._menu_row(box, key, item, key == selected, callback)
+
+    def _menu_row(self, box, key, item, selected, callback) -> None:
         row = tk.Frame(box, bg=theme.HUD_BG, cursor="hand2")
-        row.pack(fill="x", padx=10, pady=2)
+        row.pack(fill="x", padx=6, pady=1)
         cursor = tk.Label(row, text=">" if selected else " ",
                           font=theme.pixel_font(9), bg=theme.HUD_BG,
                           fg=theme.GOLD, width=2)
         cursor.pack(side="left")
         text = tk.Frame(row, bg=theme.HUD_BG)
-        text.pack(side="left", fill="x", expand=True, pady=5)
-        name = tk.Label(text, text=world["label"], font=theme.pixel_font(9),
+        text.pack(side="left", fill="x", expand=True, pady=4)
+        name = tk.Label(text, text=item["label"], font=theme.pixel_font(9),
                         bg=theme.HUD_BG,
                         fg=theme.GOLD if selected else theme.WHITE,
                         anchor="w")
         name.pack(fill="x")
-        desc = tk.Label(text, text=world["desc"], font=theme.pixel_font(6),
+        desc = tk.Label(text, text=item["desc"], font=theme.pixel_font(6),
                         bg=theme.HUD_BG, fg=theme.DIM, anchor="w")
         desc.pack(fill="x")
         widgets = (row, cursor, text, name, desc)
@@ -237,8 +274,7 @@ class PauseMenu:
         for w in widgets:
             w.bind("<Enter>", enter)
             w.bind("<Leave>", leave)
-            w.bind("<Button-1>",
-                   lambda _e, k=key: self.callbacks["select_world"](k))
+            w.bind("<Button-1>", lambda _e, k=key: callback(k))
 
     def _blink(self) -> None:
         if self.frame is None:

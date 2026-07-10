@@ -206,6 +206,37 @@ class GameBoard(tk.Canvas):
             x, y, anchor="nw",
             image=sprites.build(sprites.HERO[name][frame], self.scale, flip))
 
+    def new_episode(self) -> None:
+        """Restore per-episode visuals: key back, door shut, hero at start."""
+        an = self.anim
+        an.update({"move": None, "bump": None, "fall": None,
+                   "door_open": 0.0, "door_opening": False, "win_t": 0.0})
+        self._key_visible = True
+        self.itemconfigure(self._key_item, state="normal")
+        self.itemconfigure(self._twinkle, state="normal")
+        self._paint_door_panel()
+        self._agent_cell = tuple(self.maze.start)
+
+    ARROWS = {0: "↑", 1: "↓", 2: "←", 3: "→"}
+
+    def draw_policy(self, action_fn) -> None:
+        """Greedy-action arrows on every floor cell (None clears)."""
+        self.delete("policy")
+        if action_fn is None:
+            return
+        font = ("Segoe UI", max(7, 4 * self.scale), "bold")
+        for r in range(self.maze.size):
+            for c in range(self.maze.size):
+                if self.maze.is_wall((r, c)):
+                    continue
+                action = action_fn(r, c)
+                if action is None:
+                    continue
+                x, y = self.cell_xy(r, c)
+                self.create_text(x + self.cell / 2, y + self.cell / 2,
+                                 text=self.ARROWS[action], fill="#1b2447",
+                                 font=font, tags="policy")
+
     # events from the game session
 
     def start_move(self, from_pos, to_pos, direction: int,
