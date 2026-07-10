@@ -102,7 +102,8 @@ class MazeMarioApp:
                         self.session.gate_countdown(),
                         self.session.episode_number(),
                         self.session.current_epsilon(),
-                        self.session.win_rate())
+                        self.session.win_rate(),
+                        self.session.training_complete)
 
     def _refresh_policy(self) -> None:
         if self.show_policy:
@@ -189,7 +190,8 @@ class MazeMarioApp:
 
     def _tick(self) -> None:
         dt = theme.TICK_MS / 1000.0
-        fast_train = self.session.mode == "train" and self.speed >= 2.0
+        fast_train = (self.session.mode == "train" and self.speed >= 2.0
+                      and not self.session.training_complete)
         if not self.paused and self.playing:
             if fast_train:
                 self.session.run_batch(int(self.speed))

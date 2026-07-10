@@ -191,7 +191,11 @@ class GameBoard(tk.Canvas):
     def _draw_key(self) -> None:
         k = self.maze.key
         x, y = self.cell_xy(*k)
+        s = self.px
         self._key_base = (x, y)
+        self._key_shadow = self.create_oval(
+            x + s(3), y + s(12.5), x + s(12), y + s(15),
+            fill="#cbb180", outline="")
         self._key_item = self.create_image(
             x, y, anchor="nw", image=sprites.build(sprites.KEY_SPRITE,
                                                    self.scale))
@@ -214,6 +218,7 @@ class GameBoard(tk.Canvas):
         self._key_visible = True
         self.itemconfigure(self._key_item, state="normal")
         self.itemconfigure(self._twinkle, state="normal")
+        self.itemconfigure(self._key_shadow, state="normal")
         self._paint_door_panel()
         self._agent_cell = tuple(self.maze.start)
 
@@ -261,6 +266,7 @@ class GameBoard(tk.Canvas):
         self._key_visible = False
         self.itemconfigure(self._key_item, state="hidden")
         self.itemconfigure(self._twinkle, state="hidden")
+        self.itemconfigure(self._key_shadow, state="hidden")
         self._paint_door_panel()
         kx, ky = self._key_base
         for _ in range(10):

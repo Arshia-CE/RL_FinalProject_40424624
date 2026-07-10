@@ -116,8 +116,18 @@ class GameSession:
             self._schedule = epsilon_schedule(
                 "exponential", acfg["epsilon_start"], acfg["epsilon_end"],
                 acfg["epsilon_decay_episodes"])
+            self.episode_budget = acfg["episodes"]
             self.env = env
             self.state = env.reset()
+
+    episode_budget = 0
+
+    @property
+    def training_complete(self) -> bool:
+        """Training freezes after the config's episode budget; the hero then
+        plays its learned table greedily."""
+        return (self.mode == "train"
+                and self.trained_episodes >= self.episode_budget)
 
     def _brain_policy(self):
         if self.brain == "vi":
@@ -167,8 +177,11 @@ class GameSession:
             return None
         prev = self.state
         eps = self.current_epsilon()
+        learning = self.mode == "train" and not self.training_complete
         if self.mode == "watch":
             action = self._watch_policy(prev)
+        elif not learning:  # trained: play the learned table greedily
+            action = self.agent._act(prev, 0.0)
         elif self.brain == "q_learning":
             action = self.agent._act(prev, eps)
         else:  # sarsa: on-policy — execute the action chosen last update
@@ -177,7 +190,7 @@ class GameSession:
             action = self._pending_action
 
         nxt, reward, terminated, truncated, info = self.env.step(action)
-        if self.mode == "train":
+        if learning:
             self.agent.visits[prev] = self.agent.visits.get(prev, 0) + 1
             if self.brain == "q_learning":
                 self.agent.update(prev, action, reward, nxt, terminated)
@@ -194,7 +207,7 @@ class GameSession:
             self.outcome = "timeout"
         if self.outcome:
             self.recent.append(int(terminated))
-            if self.mode == "train":
+            if learning:
                 self.trained_episodes += 1
         events = info["events"]
         return {
@@ -214,8 +227,9 @@ class GameSession:
 
     def run_batch(self, episodes: int) -> None:
         """Headless training episodes (fast-forward at high speed)."""
-        if self.mode != "train":
+        if self.mode != "train" or self.training_complete:
             return
+        episodes = min(episodes, self.episode_budget - self.trained_episodes)
         offset = self.trained_episodes
         history = self.agent.train(
             episodes, lambda ep, off=offset: self._schedule(ep + off))[0]
@@ -230,6 +244,8 @@ class GameSession:
     def current_epsilon(self) -> float | None:
         if self.mode != "train":
             return None
+        if self.training_complete:
+            return 0.0
         return self._schedule(self.trained_episodes)
 
     def win_rate(self) -> float | None:
@@ -239,8 +255,9 @@ class GameSession:
         return sum(self.recent) / len(self.recent)
 
     def episode_number(self) -> int:
-        return (self.trained_episodes + 1 if self.mode == "train"
-                else self.episode)
+        if self.mode != "train":
+            return self.episode
+        return min(self.trained_episodes + 1, self.episode_budget)
 
     def policy_action(self, r: int, c: int) -> int | None:
         """Greedy action at (r, c) for the agent's current key/phase."""

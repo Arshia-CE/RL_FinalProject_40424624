@@ -63,7 +63,7 @@ class HudBar:
         return value
 
     def update(self, score, steps_text, has_key, gate_open, countdown,
-               episode, epsilon, win_rate):
+               episode, epsilon, win_rate, trained_done=False):
         self.score.config(text=str(score))
         self.steps.config(text=steps_text)
         if has_key:
@@ -75,9 +75,12 @@ class HudBar:
         else:
             self.dragon.config(text=f"OUT·{countdown}", fg=theme.POP_BAD)
         self.episode.config(text=str(episode))
-        self.epsilon.config(
-            text="---" if epsilon is None else f"{epsilon:.2f}",
-            fg=theme.DISABLED if epsilon is None else theme.WHITE)
+        if trained_done:
+            self.epsilon.config(text="DONE", fg=theme.GREEN)
+        else:
+            self.epsilon.config(
+                text="---" if epsilon is None else f"{epsilon:.2f}",
+                fg=theme.DISABLED if epsilon is None else theme.WHITE)
         self.win.config(
             text="---" if win_rate is None else f"{win_rate:.0%}",
             fg=theme.DISABLED if win_rate is None else theme.GREEN)
