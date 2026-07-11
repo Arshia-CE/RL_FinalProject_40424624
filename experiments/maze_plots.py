@@ -218,6 +218,64 @@ def plot_final_paths(maze: MazeMap, rollouts: list[tuple[str, dict]],
     save_figure(fig, path)
 
 
+def plot_transfer_q_diff(maze: MazeMap, q_before: dict, q_after: dict,
+                         title: str, path: Path) -> None:
+    """Before/after target training on a transferred table: per-cell
+    max-action |ΔQ| (top row) and the share of gate phases keeping the
+    transferred greedy action (bottom row; phases with no data blank)."""
+    zeros = np.zeros(len(ARROW))
+    dq_grids, keep_grids = [], []
+    for k in (0, 1):
+        dq = np.full((maze.size, maze.size), np.nan)
+        keep = np.full((maze.size, maze.size), np.nan)
+        for r in range(maze.size):
+            for c in range(maze.size):
+                if maze.is_wall((r, c)):
+                    continue
+                diffs, kept, counted = [], 0, 0
+                for p in range(maze.gate_period):
+                    s = State(r, c, k, p)
+                    qb = q_before.get(s, zeros)
+                    qa = q_after.get(s, zeros)
+                    diffs.append(float(np.abs(qa - qb).max()))
+                    if qb.any() or qa.any():
+                        counted += 1
+                        kept += int(np.argmax(qa) == np.argmax(qb))
+                dq[r, c] = max(diffs)
+                if counted:
+                    keep[r, c] = kept / counted
+        dq_grids.append(np.ma.masked_invalid(dq))
+        keep_grids.append(np.ma.masked_invalid(keep))
+
+    fig, axes = plt.subplots(2, 2, figsize=(11, 10.6))
+    vmax = max(g.max() for g in dq_grids)
+    for ax, grid, k in zip(axes[0], dq_grids, (0, 1)):
+        im_dq = ax.imshow(grid, cmap=VALUE_CMAP, vmin=0, vmax=vmax)
+        _grid_lines(ax, maze.size)
+        _cell_letters(ax, maze)
+        ax.set_title("without key (k=0)" if k == 0 else "with key (k=1)")
+    cbar = fig.colorbar(im_dq, ax=axes[0], shrink=0.9)
+    cbar.set_label("max-action |ΔQ| (max over gate phases)", color=INK_2)
+    cbar.outline.set_edgecolor(GRID_COLOR)
+    for ax, grid, k in zip(axes[1], keep_grids, (0, 1)):
+        base = np.tile(hex_to_rgb(SURFACE), (maze.size, maze.size, 1))
+        for r in range(maze.size):
+            for c in range(maze.size):
+                if maze.is_wall((r, c)):
+                    base[r, c] = hex_to_rgb(WALL_COLOR)
+        ax.imshow(base)
+        im_keep = ax.imshow(grid, cmap=DIVERGING_CMAP, vmin=0.0, vmax=1.0)
+        _grid_lines(ax, maze.size)
+        _cell_letters(ax, maze)
+        ax.set_title("without key (k=0)" if k == 0 else "with key (k=1)")
+    cbar = fig.colorbar(im_keep, ax=axes[1], shrink=0.9)
+    cbar.set_label("share of gate phases keeping the transferred greedy "
+                   "action", color=INK_2)
+    cbar.outline.set_edgecolor(GRID_COLOR)
+    fig.suptitle(title, color=INK)
+    save_figure(fig, path)
+
+
 def plot_disagreement_map(maze: MazeMap, agent_policy: dict,
                           agent_defined: set, vi_policy: dict, title: str,
                           path: Path) -> None:

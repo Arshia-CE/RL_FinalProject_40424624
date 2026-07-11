@@ -515,6 +515,25 @@ partial table has holes exactly where the maps changed), recovers almost
 the entire speed advantage (132) — the transferred half of the state space
 is the half that still matters.
 
+![Q before vs after transfer, similar target](results/figures/transfer/transfer_q_diff_similar.png)
+
+The spec's before/after-transfer view (full transfer, seed 7,
+[saved tables](results/models/transfer/)): per-cell max-action |ΔQ| on
+top, and below it the share of gate phases whose greedy action survived
+the 5000 target episodes. In Q-space "similar" becomes quantitative:
+mean max-action |ΔQ| is only 6.5 (k=0) / 3.3 (k=1), and the transferred
+greedy action survives in 83% / 68% of the states carrying data — the
+bottom row stays blue along everything the mission actually uses. What
+does get rewritten is localized and legible: re-priced detours around the
+eleven moved walls (the mid-map band at k=0), while the largest single
+rewrite — (16,14) with key, in the chamber corner — is not terrain change
+at all (the chamber is untouched) but a data refresh: 189 source visits
+had left that corner's non-greedy actions stale-low (q_up 49.6 against a
+refreshed ~137), 613 target visits pulled them up, and the greedy action
+never flipped. |ΔQ| magnitude and policy change are different things; the
+red flecks in the top-right are the opposite case — near-tied off-path
+states whose greedy action flips on tiny updates, without consequence.
+
 ![Transfer scenarios, different target](results/figures/transfer/transfer_curves_different.png)
 
 On the different target transfer is no free lunch: the full-transfer
@@ -524,6 +543,24 @@ improves modestly (691 vs 849 episodes) because the with-key half of the
 table and the unchanged corridors remain useful. The full-transfer curve
 visibly lags even scratch around episodes 200–400 before recovering: the
 population-level signature of negative transfer being unlearned.
+
+![Q before vs after transfer, different target](results/figures/transfer/transfer_q_diff_different.png)
+
+The same before/after view on the different target renders negative
+transfer as geography. Updates are ~4× larger than on the similar target
+(mean max-action |ΔQ| 23.9 at k=0, peaking at 136.9), and the dark
+epicenter of the k=0 panel is exactly the **old-key basin** around
+(12,10) — the region where the transferred table was most confidently
+wrong, so every inherited value had to be torn down; the state dissected
+in §7.3 sits inside it, and its greedy action is among the overwritten
+(left → right). Only 33% of keyless states keep their transferred greedy
+action. The with-key half tells the opposite story and explains why full
+transfer still beat scratch by 158 episodes: door, chamber and goal are
+unchanged, and the k=1 panel keeps a solid blue key→door→goal corridor
+(46% kept overall, near 100% along the endgame route) — knowledge that
+survived the map change intact. Transfer on this target is simultaneously
+harmful (keyless navigation) and helpful (endgame logic); the modest net
+speed gain is the balance of the two.
 
 ![Beta sweep, different target](results/figures/transfer/transfer_beta_different.png)
 
@@ -567,7 +604,8 @@ extinguished it: q_left collapses and the greedy action flips to the
 target-optimal right. (4) Thereafter the converging policy stops visiting
 the state entirely; its values flatten into a stale near-tie. The
 correction happens exactly while the state still matters — then the state
-is abandoned.
+is abandoned. The §7.2 ΔQ map locates this arc spatially: (12,12) lies
+inside the dark k=0 rewrite basin centered on the removed key.
 
 ---
 

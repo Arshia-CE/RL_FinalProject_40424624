@@ -13,6 +13,7 @@ from experiments.analysis import (FIGURES_DIR, RAW_DATA_DIR,
                                   write_csv)
 from experiments.common import (EVAL_EPISODES, EVAL_SEED, dict_policy,
                                 evaluate_greedy, table_policy)
+from experiments.maze_plots import plot_transfer_q_diff
 from transfer.transfer_learning import initial_q_table, unchanged_positions
 
 RAW_DIR = RAW_DATA_DIR / "transfer"
@@ -132,6 +133,18 @@ def run_transfer(config: dict) -> None:
                               RAW_DIR / "transfer_negative_case.csv")
                 else:
                     history, _ = agent.train(episodes, schedule)
+                if name == "full" and seed == seeds[0]:
+                    # before/after artifacts: the "before" table is the
+                    # committed source Q-table (full transfer copies it)
+                    agent.save(MODELS_DIR / "transfer"
+                               / f"transfer_full_{kind}.json",
+                               {"target": kind, "scenario": name,
+                                "seed": seed, "episodes": episodes})
+                    plot_transfer_q_diff(
+                        target, init_q, agent.Q,
+                        f"Full transfer on the {kind} target — Q before vs "
+                        f"after {episodes} episodes (seed {seed})",
+                        FIG_DIR / f"transfer_q_diff_{kind}.png")
                 per_seed.append(history)
                 training_rows += [{"target": kind, "scenario": name,
                                    "seed": seed, **row} for row in history]
@@ -179,4 +192,4 @@ def run_transfer(config: dict) -> None:
 
     write_csv(training_rows, RAW_DIR / "transfer_training.csv")
     write_csv(summary_rows, RAW_DIR / "transfer_summary.csv")
-    print("  wrote 3 CSVs and 4 figures")
+    print("  wrote 3 CSVs, 6 figures and 2 transferred Q-tables")
