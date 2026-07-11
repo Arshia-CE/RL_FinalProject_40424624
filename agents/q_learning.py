@@ -17,9 +17,9 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from environments.maze_map import DEFAULT_CONFIG_PATH, MAPS_DIR, MazeMap
-from environments.maze import (ACTIONS, EV_DOOR_LOCKED, EV_GATE_BLOCKED,
-                               EV_KEY_PICKUP, EV_PENALTY, EV_WALL_HIT,
-                               MazeEnv, State)
+from environments.maze import (ACTIONS, EV_DOOR_LOCKED, EV_DOOR_PASS,
+                               EV_GATE_BLOCKED, EV_KEY_PICKUP, EV_PENALTY,
+                               EV_TIMEOUT, EV_WALL_HIT, MazeEnv, State)
 
 MODELS_DIR = PROJECT_ROOT / "results" / "models"
 
@@ -102,6 +102,7 @@ class QLearningAgent:
                         "phase": state.phase, "action": action,
                         "reward": reward, "next_r": nxt.r, "next_c": nxt.c,
                         "next_has_key": nxt.has_key, "next_phase": nxt.phase,
+                        "events": "|".join(info["events"]),
                         **stats,
                         "alpha": self.alpha, "gamma": self.gamma,
                         "epsilon": round(eps, 4),
@@ -115,7 +116,9 @@ class QLearningAgent:
                 "penalty_entries": events[EV_PENALTY],
                 "gate_blocked": events[EV_GATE_BLOCKED],
                 "locked_door_attempts": events[EV_DOOR_LOCKED],
+                "door_passes": events[EV_DOOR_PASS],
                 "key_picked": int(events[EV_KEY_PICKUP] > 0),
+                "timeout": int(events[EV_TIMEOUT] > 0),
             })
         return history, trace
 

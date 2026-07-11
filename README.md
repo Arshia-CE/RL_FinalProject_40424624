@@ -135,7 +135,7 @@ and the committed maps — nothing is entered by hand. The full pipeline:
 pip install -r requirements.txt
 python environments/generator.py           # reproduces all 3 maps byte-for-byte
 python experiments/run_experiments.py      # all experiments (~60–90 min)
-python -m pytest tests/                    # 58 unit tests
+python -m pytest tests/                    # 60 unit tests
 ```
 
 `run_experiments.py` also accepts a subset, e.g.

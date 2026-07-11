@@ -117,3 +117,30 @@ class TestSarsaLambda:
                              next_action=0, terminated=True)
         assert stats["delta"] == pytest.approx(10 - 2)
         assert agent.Q[s1][0] == pytest.approx(2 + 0.5 * 8)
+
+
+class TestTrainingEventLogs:
+    """The spec's loggable events must reach the persisted logs: per-episode
+    counts (incl. door passes and timeouts) and named events per traced step."""
+
+    def check_history(self, history):
+        for row in history:
+            assert {"door_passes", "timeout"} <= row.keys()
+            # the step cap is the only source of truncation
+            assert row["timeout"] == 1 - row["success"]
+            if row["success"]:
+                assert row["door_passes"] >= 1 and row["key_picked"] == 1
+
+    def test_qlearning_logs_events(self, env):
+        agent = QLearningAgent(env, alpha=0.1, gamma=0.95, seed=0)
+        history, trace = agent.train(2, lambda ep: 1.0,
+                                     trace_episodes=frozenset({0}))
+        self.check_history(history)
+        assert trace and all(row["events"] for row in trace)
+
+    def test_sarsa_logs_events(self, env):
+        agent = SarsaLambdaAgent(env, alpha=0.1, gamma=0.95, lam=0.5, seed=0)
+        history, step_trace, _ = agent.train(2, lambda ep: 1.0,
+                                             trace_episodes=frozenset({0}))
+        self.check_history(history)
+        assert step_trace and all(row["events"] for row in step_trace)

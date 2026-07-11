@@ -121,6 +121,15 @@ The environment exposes its exact model via `transitions(s, a)` —
 `step()` samples from, so the model consumed by Value Iteration and the
 simulation experienced by the learners can never diverge.
 
+Every step also reports its named events: normal move, wall hit, penalty
+entry, key pickup, locked-door attempt, door passage, goal, and timeout —
+the spec's minimum loggable set — plus `gate_blocked` for our dynamic
+feature. They reach the persisted logs at two granularities: per-episode
+counts in the training CSVs (`wall_hits`, `penalty_entries`,
+`gate_blocked`, `locked_door_attempts`, `door_passes`, `key_picked`,
+`success`, `timeout`) and named events on every row of the per-step
+update-trace logs (§4, §5.2).
+
 ### 2.3 Reward design (two variants)
 
 **Sparse** (the comparison baseline): step −1, wall hit −5, penalty cell
@@ -143,7 +152,7 @@ exceeds the sparse return by exactly the telescoped potential sum (59.4).
 
 ### 2.4 Verification
 
-58 unit tests ([tests/](tests/)) pin the environment down: transition
+60 unit tests ([tests/](tests/)) pin the environment down: transition
 probabilities sum to 1 for all 2796 × 4 state-action pairs; sampled steps
 always lie in the support of the exposed model; empirical action noise is
 0.8/0.1/0.1 over 3000 steps; every dynamics rule (wall, door, gate by
@@ -714,4 +723,4 @@ training run are seeded (training seeds {7, 21, 42}, evaluation seed 999),
 and the regenerated VI, Q-Learning, SARSA and comparison outputs matched
 the previous run line-for-line (up to the wall-clock runtime fields, which
 track machine load). Unit tests: `python -m pytest tests/`
-(58 tests).
+(60 tests).
