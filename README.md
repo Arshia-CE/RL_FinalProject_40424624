@@ -65,7 +65,7 @@ RL_FinalProject_40424624/
 │   ├── figures/{vi,q_learning,sarsa,comparison,transfer}/
 │   └── videos/
 ├── tests/                 # Unit tests (generator, environment, updates)
-├── report.pdf             # Final analytical report
+├── report.md              # Final analytical report
 ├── requirements.txt
 ├── README.md
 └── main.py                # Entry point (launches the GUI)
