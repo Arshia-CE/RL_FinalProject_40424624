@@ -20,7 +20,7 @@ from gui.renderer import GameBoard
 class MazeMarioApp:
     def __init__(self):
         self.root = tk.Tk()
-        self.root.title("MazeMario — Dynamic Maze RL · 40424624")
+        self.root.title("MazeMario — Dynamic Maze RL")
         self.root.configure(bg=theme.SKY)
         self.root.resizable(False, False)
 
@@ -116,6 +116,7 @@ class MazeMarioApp:
     def _show_menu(self, resume_label: str) -> None:
         self.menu.show(self.session.world, resume_label, self.session.brain,
                        self.session.mode)
+        self.menu.set_enabled("mode", "train", self.session.brain != "vi")
 
     def _open_menu(self) -> None:
         self.paused = True
@@ -150,23 +151,26 @@ class MazeMarioApp:
     def _select_world(self, key: str) -> None:
         self.overlay.hide()
         self.session.load_world(key)   # solves VI for new worlds (fast)
-        self._load_board()
-        self._refresh_policy()
-        self._show_menu("START")
+        self._after_menu_choice()
 
     def _select_brain(self, key: str) -> None:
         self.overlay.hide()
         self.session.set_brain(key)
-        self._load_board()
-        self._refresh_policy()
-        self._show_menu("START")
+        self._after_menu_choice()
 
     def _select_mode(self, key: str) -> None:
         self.overlay.hide()
         self.session.set_mode(key)
+        self._after_menu_choice()
+
+    def _after_menu_choice(self) -> None:
+        """Reflect a menu selection without rebuilding the menu (no flicker);
+        session may have auto-adjusted (picking VI while training -> WATCH)."""
         self._load_board()
         self._refresh_policy()
-        self._show_menu("START")
+        self.menu.set_enabled("mode", "train", self.session.brain != "vi")
+        self.menu.refresh(self.session.world, self.session.brain,
+                          self.session.mode)
 
     def _toggle_policy(self) -> None:
         self.show_policy = not self.show_policy
@@ -250,11 +254,14 @@ class MazeMarioApp:
         if event["episode_end"]:
             # training rolls straight into the next episode
             if event["goal"]:
-                self.board.popup(nxt, f"{rewards['goal']:+d}", theme.GOLD)
+                self.board.popup((nxt[0] - 1.2, nxt[1]),
+                                 f"{rewards['goal']:+d}", theme.GOLD)
             delay = 900 if event["goal"] else 250
             self.root.after(delay, self._next_training_episode)
         elif event["goal"]:
-            self.board.popup(nxt, f"{rewards['goal']:+d}", theme.GOLD)
+            # popup a cell higher so it clears the rising hearts
+            self.board.popup((nxt[0] - 1.2, nxt[1]),
+                             f"{rewards['goal']:+d}", theme.GOLD)
             self.board.celebrate()
             self.root.after(1400, self._show_outcome)
         elif event["outcome"] == "timeout":

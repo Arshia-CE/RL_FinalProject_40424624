@@ -186,10 +186,12 @@ class PauseMenu:
         self.callbacks = callbacks
         self.frame: tk.Frame | None = None
         self._blink_job = None
+        self._rows: dict[str, dict] = {}
 
     def show(self, selected_world: str, resume_label: str,
              selected_brain: str = "vi", selected_mode: str = "watch") -> None:
         self.hide()
+        self._rows = {}
         bg = theme.OVERLAY_BG
         self.frame = tk.Frame(self.root, bg=bg)
         self.frame.place(x=0, y=0, relwidth=1, relheight=1)
@@ -204,7 +206,8 @@ class PauseMenu:
         title.create_text(310, 42, text="MAZEMARIO", font=font,
                           fill=theme.GOLD)
         title.pack(pady=(30, 2))
-        tk.Label(self.frame, text="DYNAMIC MAZE · RL PROJECT 40424624",
+        tk.Label(self.frame,
+                 text="RL FINAL PROJECT BY ARSHIA AKBARI ALAGHA",
                  font=theme.pixel_font(8), bg=bg,
                  fg=theme.LABEL).pack(pady=(0, 14))
 
@@ -215,11 +218,11 @@ class PauseMenu:
         right = tk.Frame(columns, bg=bg)
         right.pack(side="left", padx=5, anchor="n")
         self._select_box(left, "SELECT WORLD", WORLDS, selected_world,
-                         self.callbacks["select_world"])
+                         self.callbacks["select_world"], group="world")
         self._select_box(right, "HERO BRAIN", BRAINS, selected_brain,
-                         self.callbacks["select_brain"])
+                         self.callbacks["select_brain"], group="brain")
         self._select_box(right, "MODE", MODES, selected_mode,
-                         self.callbacks["select_mode"])
+                         self.callbacks["select_mode"], group="mode")
 
         buttons = tk.Frame(self.frame, bg=bg)
         buttons.pack(pady=14)
@@ -236,7 +239,8 @@ class PauseMenu:
         self.hint.pack(pady=10)
         self._blink()
 
-    def _select_box(self, parent, title, items, selected, callback) -> None:
+    def _select_box(self, parent, title, items, selected, callback,
+                    group: str) -> None:
         gold = tk.Frame(parent, bg=theme.GOLD)
         gold.pack(pady=6, fill="x")
         box = tk.Frame(gold, bg=theme.HUD_BG)
@@ -244,10 +248,11 @@ class PauseMenu:
         tk.Label(box, text=title, font=theme.pixel_font(8),
                  bg=theme.HUD_BG, fg=theme.LABEL,
                  anchor="w").pack(fill="x", padx=10, pady=(8, 2))
+        self._rows[group] = {}
         for key, item in items.items():
-            self._menu_row(box, key, item, key == selected, callback)
+            self._menu_row(box, group, key, item, key == selected, callback)
 
-    def _menu_row(self, box, key, item, selected, callback) -> None:
+    def _menu_row(self, box, group, key, item, selected, callback) -> None:
         row = tk.Frame(box, bg=theme.HUD_BG, cursor="hand2")
         row.pack(fill="x", padx=6, pady=1)
         cursor = tk.Label(row, text=">" if selected else " ",
@@ -265,19 +270,55 @@ class PauseMenu:
                         bg=theme.HUD_BG, fg=theme.DIM, anchor="w")
         desc.pack(fill="x")
         widgets = (row, cursor, text, name, desc)
+        info = {"cursor": cursor, "name": name, "desc": desc, "row": row,
+                "widgets": widgets, "enabled": True}
+        self._rows[group][key] = info
 
         def enter(_e):
-            for w in widgets:
-                w.config(bg=theme.MENU_HOVER)
+            if info["enabled"]:
+                for w in widgets:
+                    w.config(bg=theme.MENU_HOVER)
 
         def leave(_e):
             for w in widgets:
                 w.config(bg=theme.HUD_BG)
 
+        def click(_e):
+            if info["enabled"]:
+                callback(key)
+
         for w in widgets:
             w.bind("<Enter>", enter)
             w.bind("<Leave>", leave)
-            w.bind("<Button-1>", lambda _e, k=key: callback(k))
+            w.bind("<Button-1>", click)
+
+    def set_enabled(self, group: str, key: str, enabled: bool) -> None:
+        """Gray out a row (e.g. TRAIN while the brain is Value Iteration)."""
+        info = self._rows.get(group, {}).get(key)
+        if info is None or info["enabled"] == enabled:
+            return
+        info["enabled"] = enabled
+        info["row"].config(cursor="hand2" if enabled else "arrow")
+        info["name"].config(fg=theme.WHITE if enabled else theme.DISABLED)
+        info["desc"].config(fg=theme.DIM if enabled else theme.DISABLED)
+        if not enabled:
+            for w in info["widgets"]:
+                w.config(bg=theme.HUD_BG)
+
+    def set_selected(self, group: str, selected_key: str) -> None:
+        """Move a group's cursor in place (no rebuild, no flicker)."""
+        for key, info in self._rows.get(group, {}).items():
+            on = key == selected_key
+            info["cursor"].config(text=">" if on else " ")
+            if info["enabled"]:
+                info["name"].config(fg=theme.GOLD if on else theme.WHITE)
+
+    def refresh(self, world: str, brain: str, mode: str) -> None:
+        if not self.visible:
+            return
+        self.set_selected("world", world)
+        self.set_selected("brain", brain)
+        self.set_selected("mode", mode)
 
     def _blink(self) -> None:
         if self.frame is None:

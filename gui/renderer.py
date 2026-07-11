@@ -39,9 +39,9 @@ class GameBoard(tk.Canvas):
 
     def _reset_anim(self) -> None:
         self.anim = {"move": None, "facing": DOWN, "frame": 0, "bump": None,
-                     "fall": None, "emerge": 0.0, "door_open": 0.0,
-                     "door_opening": False, "roar": 0.0, "win_t": 0.0,
-                     "hearts": [], "popups": [], "sparks": []}
+                     "fall": None, "emerge": 0.0, "dodge": 0.0,
+                     "door_open": 0.0, "door_opening": False, "roar": 0.0,
+                     "win_t": 0.0, "hearts": [], "popups": [], "sparks": []}
         self._agent_cell = None
         self._key_visible = True
 
@@ -332,6 +332,13 @@ class GameBoard(tk.Canvas):
         target = getattr(self, "_gate_target", 0.0)
         speed = dt * 4.5
         an["emerge"] += max(-speed, min(speed, target - an["emerge"]))
+        # entry-only barrier: with the hero standing on the gate cell, the
+        # dragon slides aside toward the approach so both stay visible
+        on_gate = (self._agent_cell is not None
+                   and tuple(self._agent_cell) == tuple(self.maze.gate))
+        an["dodge"] += max(-speed, min(speed,
+                                       (1.0 if on_gate else 0.0)
+                                       - an["dodge"]))
         if an["door_opening"] and an["door_open"] < 1:
             an["door_open"] = min(1.0, an["door_open"] + dt * 3)
             self._paint_door_panel()
@@ -421,7 +428,8 @@ class GameBoard(tk.Canvas):
             self.itemconfigure(
                 self._dragon_item, state="normal",
                 image=sprites.crop_top(sprites.DRAGON, self.scale, visible))
-            self.coords(self._dragon_item, x + shake, cy)
+            self.coords(self._dragon_item,
+                        x + shake - self.px(8) * an["dodge"], cy)
         # hero position (tween / bump / fall)
         r, c = self._agent_cell
         hop = 0.0

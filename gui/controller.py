@@ -33,14 +33,14 @@ WORLDS = {
 }
 
 BRAINS = {
-    "vi": {"label": "VALUE ITERATION", "desc": "EXACT MDP PLAN"},
+    "vi": {"label": "VALUE ITERATION", "desc": "EXACT MDP PLAN · WATCH ONLY"},
     "q_learning": {"label": "Q-LEARNING", "desc": "TRAINED ON WORLD 1"},
     "sarsa": {"label": "SARSA λ=0.7", "desc": "TRAINED ON WORLD 1"},
 }
 
 MODES = {
     "watch": {"label": "WATCH", "desc": "AGENT PLAYS"},
-    "train": {"label": "TRAIN", "desc": "LEARNS FROM ZERO"},
+    "train": {"label": "TRAIN", "desc": "LEARNS FROM ZERO · QL/SARSA"},
 }
 
 MODEL_FILES = {
@@ -76,8 +76,8 @@ class GameSession:
         self.restart()
 
     def set_brain(self, key: str) -> None:
-        if self.mode == "train" and key == "vi":
-            key = "q_learning"
+        if key == "vi" and self.mode == "train":
+            self.mode = "watch"  # VI is planned exactly, never trained
         self.brain = key
         self.restart()
 
