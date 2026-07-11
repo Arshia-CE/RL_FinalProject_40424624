@@ -15,8 +15,8 @@ from experiments.analysis import (FIGURES_DIR, RAW_DATA_DIR,
                                   plot_training_curves, rolling_mean,
                                   write_csv)
 from experiments.common import (EVAL_EPISODES, EVAL_SEED, dict_policy,
-                                evaluate_greedy, table_policy)
-from experiments.maze_plots import plot_disagreement_map
+                                evaluate_greedy, greedy_rollout, table_policy)
+from experiments.maze_plots import plot_disagreement_map, plot_final_paths
 
 RAW_DIR = RAW_DATA_DIR / "comparison"
 FIG_DIR = FIGURES_DIR / "comparison"
@@ -194,4 +194,15 @@ def run_comparison(config: dict) -> None:
          ("steps", "steps per episode")],
         "Model-free methods, sparse reward, exponential decay",
         FIG_DIR / "comparison_learning_curves.png")
-    print("  wrote 2 CSVs and 3 figures")
+    rollouts = [(label, greedy_rollout(MazeEnv(maze, config,
+                                               reward_mode="sparse"),
+                                       agents[name][0], EVAL_SEED))
+                for name, label in (("value_iteration", "Value Iteration"),
+                                    ("q_learning", "Q-Learning"),
+                                    ("sarsa_lambda",
+                                     f"SARSA(λ={BEST_LAMBDA:g})"))]
+    plot_final_paths(maze, rollouts,
+                     f"Final greedy paths, one evaluation episode "
+                     f"(seed {EVAL_SEED})",
+                     FIG_DIR / "comparison_final_paths.png")
+    print("  wrote 2 CSVs and 4 figures")

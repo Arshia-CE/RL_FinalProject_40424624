@@ -353,7 +353,7 @@ SARSA(λ=0.7, seed 7). Data:
 | metric | Value Iteration | Q-Learning | SARSA(0.7) |
 |---|---|---|---|
 | type | model-based | model-free, off-policy | model-free, on-policy |
-| runtime (this machine) | **0.2 s** | 14.3 s | 108.3 s |
+| runtime (this machine) | **0.1 s** | 7.8 s | 54.1 s |
 | env samples to 90% success | — (has the model) | 612,908 | **526,282** |
 | total env samples (5000 eps) | 0 | 850,601 | 769,145 |
 | model file size | **103 KB** (V + π) | 271 KB | 274 KB |
@@ -363,7 +363,7 @@ SARSA(λ=0.7, seed 7). Data:
 | penalty entries / eval episode | 0.260 | 0.236 | **0.188** |
 
 (Absolute runtimes vary with machine load between runs; the *ratios* —
-VI ~70× faster than Q-Learning, SARSA's trace loop ~7–8× Q-Learning — are
+VI ~70–80× faster than Q-Learning, SARSA's trace loop ~7× Q-Learning — are
 stable.)
 
 ![Model-free learning curves](results/figures/comparison/comparison_learning_curves.png)
@@ -373,7 +373,7 @@ takeoff, convergence — with SARSA(0.7) consistently ahead in episodes and
 samples (~14% fewer steps to sustained success): its traces buy sample
 efficiency at the cost of per-step compute. Value Iteration does not appear
 on these axes at all, which *is* the comparison: given the exact
-transition model it produces the optimal policy in a fifth of a second and
+transition model it produces the optimal policy in a tenth of a second and
 zero samples, while the model-free methods pay ~500–600k environment
 interactions for near-optimal policies. Note also what "near-optimal"
 means precisely: evaluated under the exact model, Q-Learning's policy is
@@ -403,6 +403,32 @@ the chamber is blank at k=0 because it is unreachable without the key.
 Tabular methods concentrate their accuracy where their experience went;
 where data is scarce, the greedy action is close to arbitrary — and it
 doesn't matter, because those states are off-policy.
+
+![Final greedy paths](results/figures/comparison/comparison_final_paths.png)
+
+The final-path figure is the on-policy complement to the disagreement
+maps: one greedy evaluation episode per algorithm, all under the same
+seed-999 slip stream, so any difference between panels is a policy
+difference, not luck. The bottom line is identical across all three —
+45 steps, return 198, decomposing as +250 (key + goal) − 45 step costs
+− 5 for one slip-induced wall bump − 2 for one closed-gate wait — yet the
+routes are not: Q-Learning cuts through the interior corridors around
+rows 5–9 while VI and SARSA(0.7) hug the west edge down to row 10. That
+is the near-tie analysis made visible — different greedy choices in
+equally-priced corridors produce different paths of exactly equal value,
+which is why ~51% raw agreement coexists with matching returns. In fact,
+replaying each policy's *intended* actions with slips disabled walks
+exactly 33 moves for all three agents — the BFS lower bound for the
+start→key→goal mission — so the ~10 extra realized moves are entirely the
+price of the 20% slip rate, not routing waste. The short
+dead-end spurs (Q-Learning near (4,2), VI just south-west of the goal) are
+perpendicular slips followed by an immediate correction — the 0.8/0.1/0.1
+dynamics in action. And every route funnels through ★ → gate → ◆: each
+agent pays exactly one −2 gate wait, confirming that the bottleneck cannot
+be planned away entirely, only phase-timed. The limitation is inherent:
+this is a single episode at a single seed — representative (45 steps sits
+within the 43.4–45.6 eval-mean band of the table above), but the aggregate
+table, not this picture, carries the comparison.
 
 **Three sample states**
 ([comparison_sample_states.csv](results/raw_data/comparison/comparison_sample_states.csv)),
@@ -576,7 +602,7 @@ the game is the same environment and the same update rules, animated.
 | needs | full model P, R | env interaction only | env interaction only |
 | unit of progress | Bellman sweep | episode | episode |
 | output | V*, π* | Q, π | Q, E, π |
-| compute for this task | ~0.2 s | ~14 s | ~108 s |
+| compute for this task | ~0.1 s | ~8 s | ~54 s |
 | samples for this task | 0 | ~850k steps | ~770k steps |
 | optimality reached | exact (proof by contraction) | ~95–99% of V*, asymptote set by ε-floor and fixed α | same class, slightly better here (V^π 7.83 vs 5.93) |
 | behavior near danger | risk-neutral optimal | risk-neutral estimates | measurably safer routes (on-policy) |
@@ -610,7 +636,7 @@ without it?** VI's backup averages over P(s′|s,a) explicitly — it *is* a
 computation on the model (here exposed exactly by `transitions()`, §2.2).
 The TD methods replace that expectation with sampled transitions: each
 `step()` outcome is an unbiased draw from the same distribution. The trade
-in this project, measured: with the model, exact optimality in 0.2 s and
+in this project, measured: with the model, exact optimality in ~0.1 s and
 zero samples; without it, ~500–600k environment steps to near-optimal
 (§6). Advantage of model-free: it works when the model is unavailable or
 unwritable; limitation: sample cost and residual suboptimality concentrated
@@ -686,5 +712,6 @@ The final artifact set in this repository was produced by deleting
 `results/` entirely and re-running the pipeline; map generation and every
 training run are seeded (training seeds {7, 21, 42}, evaluation seed 999),
 and the regenerated VI, Q-Learning, SARSA and comparison outputs matched
-the previous run line-for-line. Unit tests: `python -m pytest tests/`
+the previous run line-for-line (up to the wall-clock runtime fields, which
+track machine load). Unit tests: `python -m pytest tests/`
 (58 tests).

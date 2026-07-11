@@ -148,7 +148,7 @@ dependency order (`transfer` needs the Q-table saved by `q_learning`;
 | `vi` | `raw_data/vi/` (γ sweep CSV), `models/vi/` (3), `figures/vi/` (4) | seconds |
 | `q_learning` | training/summary/update-trace CSVs, 4 Q-tables, 3 figures | ~5 min |
 | `sarsa_lambda` | training/summary/δ‑E trace CSVs, 4 Q-tables, 2 figures | ~25 min |
-| `comparison` | summary + sample-state CSVs, 3 figures | ~2 min |
+| `comparison` | summary + sample-state CSVs, 4 figures | ~2 min |
 | `transfer` | training/summary/negative-case CSVs, 4 figures | ~30–60 min |
 
 Determinism: map generation, Value Iteration and all agent training runs are

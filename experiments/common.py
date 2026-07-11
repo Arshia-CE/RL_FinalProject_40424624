@@ -36,6 +36,24 @@ def dict_policy(policy: dict[State, int | None]):
     return lambda s: policy.get(s) if policy.get(s) is not None else 0
 
 
+def greedy_rollout(env: MazeEnv, action_fn, seed: int) -> dict:
+    """One deterministic greedy episode: the full state path, plus the path
+    index of each event's first occurrence (for figure markers)."""
+    env.reset(seed=seed)
+    state = env.reset()
+    states, event_steps, total = [state], {}, 0.0
+    terminated = truncated = False
+    while not (terminated or truncated):
+        state, reward, terminated, truncated, info = env.step(
+            action_fn(state))
+        total += reward
+        states.append(state)
+        for event in info["events"]:
+            event_steps.setdefault(event, len(states) - 1)
+    return {"states": states, "return": total, "steps": env.steps,
+            "terminated": terminated, "event_steps": event_steps}
+
+
 def evaluate_greedy(env: MazeEnv, action_fn, episodes: int,
                     seed: int) -> dict:
     """Deterministic rollouts of a policy on the sparse env."""

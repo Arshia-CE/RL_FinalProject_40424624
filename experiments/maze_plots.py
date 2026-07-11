@@ -9,6 +9,8 @@ from pathlib import Path
 import matplotlib.patheffects as path_effects
 import matplotlib.pyplot as plt
 import numpy as np
+from matplotlib.collections import LineCollection
+from matplotlib.colors import LinearSegmentedColormap
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
@@ -16,15 +18,17 @@ if str(PROJECT_ROOT) not in sys.path:
 
 from environments.maze_map import (DOOR, GATE, GOAL, KEY, PENALTY, START,
                                    MazeMap)
-from environments.maze import State
+from environments.maze import EV_DOOR_PASS, EV_KEY_PICKUP, State
 from experiments.analysis import (ARROW, DIVERGING_CMAP, GRID_COLOR, INK,
-                                  INK_2, SURFACE, VALUE_CMAP, WALL_COLOR,
-                                  hex_to_rgb, save_figure)
+                                  INK_2, SEQ_RAMP, SURFACE, VALUE_CMAP,
+                                  WALL_COLOR, hex_to_rgb, save_figure)
 
 CELL_LETTER = {START: "S", KEY: "K", DOOR: "D", GOAL: "G", GATE: "T",
                PENALTY: "P"}
 CELL_WASH = {START: "#2a78d6", KEY: "#eda100", DOOR: "#e87ba4",
              GOAL: "#1baf7a", GATE: "#4a3aa7", PENALTY: "#e34948"}
+# darker end of the sequential ramp: readable as a line on the light surface
+PATH_CMAP = LinearSegmentedColormap.from_list("path_blue", SEQ_RAMP[2:])
 
 
 def _grid_lines(ax, n: int) -> None:
@@ -176,6 +180,41 @@ def plot_visit_map(maze: MazeMap, visits: dict[State, int], title: str,
                    color=INK_2)
     cbar.outline.set_edgecolor(GRID_COLOR)
     fig.suptitle(title, color=INK)
+    save_figure(fig, path)
+
+
+def plot_final_paths(maze: MazeMap, rollouts: list[tuple[str, dict]],
+                     title: str, path: Path) -> None:
+    """One greedy episode per agent (from greedy_rollout), drawn through
+    cell centers and colored by step order; key pickup and door passage
+    marked."""
+    fig, axes = plt.subplots(1, len(rollouts),
+                             figsize=(5.1 * len(rollouts), 5.6))
+    for ax, (label, roll) in zip(np.atleast_1d(axes), rollouts):
+        draw_maze(ax, maze)
+        pts = np.array([(s.c, s.r) for s in roll["states"]], dtype=float)
+        segments = np.stack([pts[:-1], pts[1:]], axis=1)
+        lc = LineCollection(segments, cmap=PATH_CMAP,
+                            array=np.arange(len(segments)),
+                            linewidth=2.4, capstyle="round", zorder=2.6)
+        ax.add_collection(lc)
+        for event, marker, size in ((EV_KEY_PICKUP, "*", 13),
+                                    (EV_DOOR_PASS, "D", 8)):
+            step = roll["event_steps"].get(event)
+            if step is not None:
+                s = roll["states"][step]
+                ax.plot(s.c, s.r, marker,
+                        color=CELL_WASH[KEY if event == EV_KEY_PICKUP
+                                        else DOOR],
+                        markersize=size, markeredgecolor="white",
+                        markeredgewidth=0.8, zorder=3.5)
+        outcome = "goal" if roll["terminated"] else "timeout"
+        ax.set_title(f"{label} — {roll['steps']} steps, "
+                     f"return {roll['return']:.0f} ({outcome})")
+    cbar = fig.colorbar(lc, ax=axes, shrink=0.85)
+    cbar.set_label("step along the episode", color=INK_2)
+    cbar.outline.set_edgecolor(GRID_COLOR)
+    fig.suptitle(f"{title} — ★ key pickup, ◆ door passage", color=INK)
     save_figure(fig, path)
 
 
