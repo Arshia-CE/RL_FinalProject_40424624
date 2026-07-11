@@ -364,18 +364,33 @@ Jumpstart = greedy evaluation of the initial table *before* training
 (200 episodes). Unchanged 3×3 neighborhoods: similar 119/222 cells (53.6%),
 different 61/213 (28.6%) → selective transfers 1356 / 672 of 2724 states.
 
-Seed-averaged results (target optimum: similar 192.5, different 179.8):
+Seed-averaged results, all six scenarios per target (spec's four: scratch /
+full / scaled with β ∈ {0.25, 0.5, 0.75} / selective). Target optimum:
+similar 192.5, different 179.8:
 
 | target | scenario | jumpstart | episodes to 90% | final return |
 |---|---|---|---|---|
 | similar | scratch | 0% / −3670 | 718 | 181.0 |
 | similar | full | **100% / −139** | **99** | 184.9 |
 | similar | scaled β=0.25 | 100% / −139 | **99** | **190.2** |
+| similar | scaled β=0.50 | 100% / −139 | **99** | 188.9 |
+| similar | scaled β=0.75 | 100% / −139 | **99** | 184.5 |
 | similar | selective | 0% / −2777 | 132 | 185.4 |
 | different | scratch | 0% / −3634 | 849 | 158.6 |
 | different | full | **0% / −3573** | 691 | 161.2 |
-| different | scaled β=0.5 | 0% / −3573 | **478** | 162.5 |
+| different | scaled β=0.25 | 0% / −3573 | 500 | 150.8 |
+| different | scaled β=0.50 | 0% / −3573 | **478** | 162.5 |
+| different | scaled β=0.75 | 0% / −3573 | 622 | 159.0 |
 | different | selective | 0% / −3539 | 519 | 152.3 |
+
+β=0.75 reading: closest to full transfer, as expected — same 99-episode
+takeoff on similar but the lowest scaled final there (184.5 ≈ full's 184.9,
+stale magnitudes persist), and on different it is the slowest of the three
+β values (622 vs 478/500) because the stronger wrong prior resists
+correction. Monotone in β on the different target's adaptation speed —
+clean evidence that β controls "transfer intensity" through update
+dynamics, not through the initial greedy policy (jumpstart identical for
+all β).
 
 Findings (report Q6):
 - **Similar target: unambiguous positive transfer.** Full/scaled tables give

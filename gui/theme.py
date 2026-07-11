@@ -1,4 +1,4 @@
-"""MazeMario GUI theme: palette, fonts and timing (from MazeMario.dc.html)."""
+"""MazeMario GUI theme: palette, fonts and timing."""
 
 import tkinter.font as tkfont
 
