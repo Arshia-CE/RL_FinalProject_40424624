@@ -1,8 +1,10 @@
 """Dynamic maze environment modeled as an MDP.
 
 State s = (r, c, has_key, gate_phase); actions U/D/L/R with 0.8/0.1/0.1
-stochasticity. Walls, the locked door (keyless) and the closed gate block by
-keeping the agent in place; the gate phase advances every step. Rewards are
+stochasticity. Walls, the locked door (keyless) and the gate block by
+keeping the agent in place; the gate phase advances every step, and gate
+entry requires the gate to be open on ARRIVAL (the phase after the step),
+not at departure. Rewards are
 sparse or potential-based shaped; the goal terminates, the step cap
 truncates. transitions() exposes the exact model for Value Iteration, built
 from the same resolution code that step() samples from.
@@ -202,8 +204,8 @@ class MazeEnv:
             events = [EV_WALL_HIT]
         elif target == self.maze.door and not k:
             events = [EV_DOOR_LOCKED]
-        elif target == self.maze.gate and not self.gate_open(phase):
-            events = [EV_GATE_BLOCKED]
+        elif target == self.maze.gate and not self.gate_open(next_phase):
+            events = [EV_GATE_BLOCKED]  # must be open when you arrive
         else:
             nr, nc = target
             cell = self.maze.cell(target)
@@ -301,16 +303,18 @@ def main() -> None:
             assert env.is_terminal(state) or abs(probs - 1.0) < 1e-12
     print("transition model: probabilities sum to 1 for every (s, a)")
 
-    # the gate phase visibly changes the model: same cell, different phase
+    # the gate phase visibly changes the model: entry needs the gate OPEN ON
+    # ARRIVAL, so the boundary phases show the rule (open {0,1,2}, period 6):
     gr, gc = maze.gate
-    approach = State(gr, gc - 1, 1, 0)  # gate open (phase 0)
-    blocked = State(gr, gc - 1, 1, 3)   # gate closed (phase 3)
-    for s in (approach, blocked):
+    enters = State(gr, gc - 1, 1, 5)   # closed now, open on arrival
+    blocked = State(gr, gc - 1, 1, 2)  # open now, closed on arrival
+    for s in (enters, blocked):
         outs = env.transitions(s, RIGHT)
         move = next((p for p, ns, *_ in outs if (ns.r, ns.c) == (gr, gc)), 0.0)
+        arrival = (s.phase + 1) % maze.gate_period
         print(f"  from {tuple(s)} action=right: "
               f"P(enter gate cell) = {move:.1f} (gate "
-              f"{'open' if env.gate_open(s.phase) else 'closed'})")
+              f"{'open' if env.gate_open(arrival) else 'closed'} on arrival)")
 
     for mode in ("sparse", "shaped"):
         env = MazeEnv(maze, config, reward_mode=mode, seed=123)

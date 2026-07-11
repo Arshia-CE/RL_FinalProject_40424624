@@ -144,6 +144,27 @@ class TestDynamics:
         assert (nxt.r, nxt.c) == tuple(maze.gate)
         assert info["events"] == [EV_MOVE]
 
+    def test_gate_entry_uses_arrival_phase(self, maze, det_env):
+        """Boundary phases pin the rule: the gate must be open on ARRIVAL."""
+        period, opens = maze.gate_period, set(maze.gate_open_phases)
+        last_open = next(p for p in opens if (p + 1) % period not in opens)
+        last_closed = next(p for p in range(period) if p not in opens
+                           and (p + 1) % period in opens)
+        src = normal_neighbor(maze, maze.gate)
+        action = action_towards(src, maze.gate)
+
+        # open now, closed on arrival -> blocked
+        nxt, _, _, _, info = det_step(
+            det_env, State(src[0], src[1], 1, last_open), action)
+        assert (nxt.r, nxt.c) == src
+        assert info["events"] == [EV_GATE_BLOCKED]
+
+        # closed now, open on arrival -> enters
+        nxt, _, _, _, info = det_step(
+            det_env, State(src[0], src[1], 1, last_closed), action)
+        assert (nxt.r, nxt.c) == tuple(maze.gate)
+        assert info["events"] == [EV_MOVE]
+
     def test_key_pickup_once(self, maze, det_env):
         src = normal_neighbor(maze, maze.key)
         action = action_towards(src, maze.key)
