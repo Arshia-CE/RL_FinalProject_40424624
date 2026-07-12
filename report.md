@@ -28,8 +28,10 @@ maze_size  = 15 + (base_seed % 4)  # = 17  →  17×17
 **Chosen dynamic feature: the periodic gate (دروازه دوره‌ای).** A gate cell
 cycles with period 6 — open during phases {0, 1, 2}, closed during
 {3, 4, 5} — and the phase advances every time step whether or not the agent
-moves. Entering the closed gate behaves like a wall bump (stay in place,
-−2). The gate was chosen over the alternatives because it is the smallest
+moves. Entry requires the gate to be **open on arrival** (the phase after
+the step): a blocked attempt behaves like a wall bump (stay in place, −2),
+and standing on the cell is never harmful — the gate refuses entry, it does
+not attack. The gate was chosen over the alternatives because it is the smallest
 state extension (×6) that still forces genuine *temporal* planning: the
 agent must reason about when it arrives, not only where it goes
 (demonstrated in §4). Limited energy would have multiplied the state space
@@ -94,7 +96,7 @@ byte-for-byte.
 |---|---|
 | State space S | `s = (r, c, has_key, gate_phase)`: 233 passable cells × 2 × 6 = **2796 states** |
 | Action space A | up, down, left, right (4) |
-| Transition P | intended direction with p = 0.8, each perpendicular with p = 0.1; the resulting move is resolved against walls, the locked door (blocked without the key) and the closed gate (blocked in phases 3–5); all blocked outcomes keep the agent in place; `gate_phase` always advances by 1 (mod 6); entering the key cell sets `has_key = 1` |
+| Transition P | intended direction with p = 0.8, each perpendicular with p = 0.1; the resulting move is resolved against walls, the locked door (blocked without the key) and the gate (entry blocked unless open on arrival — i.e. unless the *next* phase is in {0, 1, 2}, so departures on phases {2, 3, 4} bounce); all blocked outcomes keep the agent in place; `gate_phase` always advances by 1 (mod 6); entering the key cell sets `has_key = 1` |
 | Reward R | §2.3 — sparse and potential-shaped variants |
 | Discount γ | 0.95 reference; {0.90, 0.95, 0.99} studied in §4 |
 | Terminal states | goal cell (any key/phase) |
@@ -147,12 +149,12 @@ distances would spike by −γ·dist(key→goal) at the exact moment the agent
 achieves the subgoal, punishing success. Because the shaping is
 potential-based (Ng et al., 1999) with shaping-γ equal to the agent's γ,
 the optimal policy is provably unchanged — verified empirically in §5. As
-a numerical check, on the 33-step scripted optimal path the shaped return
-exceeds the sparse return by exactly the telescoped potential sum (59.4).
+a numerical check, on the 36-step slip-free optimal walk the shaped return
+exceeds the sparse return by exactly the telescoped potential sum (60.5).
 
 ### 2.4 Verification
 
-60 unit tests ([tests/](tests/)) pin the environment down: transition
+61 unit tests ([tests/](tests/)) pin the environment down: transition
 probabilities sum to 1 for all 2796 × 4 state-action pairs; sampled steps
 always lie in the support of the exposed model; empirical action noise is
 0.8/0.1/0.1 over 3000 steps; every dynamics rule (wall, door, gate by
@@ -174,9 +176,9 @@ extracted from V* is the reference for both model-free methods.
 
 | γ | sweeps to converge | V(start) | eval success | eval return | eval steps | policy agreement vs γ=0.95 |
 |---|---|---|---|---|---|---|
-| 0.90 | 80 | −9.79 | 100% | 191.51 | 43.3 | 97.9% |
-| 0.95 | 91 | 9.60 | 100% | 191.61 | 43.4 | — (reference) |
-| 0.99 | 102 | 119.43 | 100% | 191.99 | 43.6 | 96.6% |
+| 0.90 | 80 | −9.80 | 100% | 191.52 | 43.4 | 97.9% |
+| 0.95 | 91 | 9.56 | 100% | 191.66 | 43.4 | — (reference) |
+| 0.99 | 102 | 119.31 | 100% | 192.78 | 43.4 | 96.6% |
 
 (Evaluation protocol here and throughout: 500 greedy episodes on the
 stochastic environment, evaluation seed 999. Runtime is ~0.02–0.03 s per γ.)
@@ -185,7 +187,7 @@ stochastic environment, evaluation seed 999. Runtime is ~0.02–0.03 s per γ.)
 
 The convergence curves show two regimes. For the first ~45 sweeps the
 maximum value change plateaus: reward information is still propagating
-backward along the ~33-step optimal path, one step per sweep, so the
+backward along the ~36-step optimal walk, one step per sweep, so the
 largest updates track the step-cost scale rather than shrinking. Once the
 value estimates connect start to goal, the contraction mapping takes over
 and the error decays geometrically with slope ln γ — visibly steeper for
@@ -203,7 +205,7 @@ without a key — the door gates entry, not the goal, so a keyless agent
 *placed* there could still finish; this is a property of the state space,
 not a bug. Values differ enormously across γ (V(start) from −9.8, where
 discounted terminal rewards no longer cover accumulated step costs, to
-+119.4) while all three policies are behaviorally near-identical — value
++119.3) while all three policies are behaviorally near-identical — value
 *scale* says nothing about policy *quality*.
 
 ![VI policy by phase](results/figures/vi/vi_policy_by_phase_gamma0.95.png)
@@ -212,13 +214,18 @@ This figure is the central evidence that the periodic gate genuinely shapes
 decision-making. Far from the gate the arrows are phase-invariant (an agent
 ten steps away doesn't care about the current phase, which will have cycled
 by arrival). But at the chamber approach, the optimal action at the *same
-cell with the same key status* differs by phase: in open phases 0–2 the
-arrows point into the gate; in phases 3–4 they point away (walking a
-two-step detour beats paying repeated −2 bumps — arriving at phase 3 is
-worth 96.1 vs 119.9 at phase 0, a ~24-value timing penalty); and at phase 5
-the optimal move is to bump the closed gate *once* deliberately, because
-the phase rolls over and the very next move walks through. One cheap bump
-beats a detour — Value Iteration is counting steps exactly.
+cell with the same key status* differs by phase — and under the arrival
+rule the pattern runs one tick ahead of the eye: the arrows point into the
+gate exactly on departure phases {5, 0, 1} (open on arrival), *including
+phase 5 while the gate still looks closed*, and turn away on phase 2, when
+the gate looks open but will have closed on arrival. The mistiming cost is
+explicit in V: the approach cell with the key is worth 119.9 at phase 5 and
+96.0 at phase 2 — a ~24-value timing penalty. Waiting is priced exactly,
+too: with two closed ticks to burn (phases 2–3) the policy shuffles a
+two-step sidestep loop below the gate (two −1 steps); with exactly one tick
+left (phase 4) it bumps the closed gate *once* deliberately (−2 on top of
+the step) and walks through on the rollover. Value Iteration counts steps
+— and clock ticks — exactly.
 
 ---
 
@@ -234,21 +241,23 @@ saved with the Q-table. Hyper-parameters (config): α = 0.1, γ = 0.95,
 
 **Hand-reconstructed update** (required by the spec; from the committed
 [q_update_trace.csv](results/raw_data/q_learning/q_update_trace.csv),
-episode 2500, α = 0.1, γ = 0.95): at s = (0,1,k=0,p=0), action left,
-reward −1, s′ = (0,0,k=0,p=1):
+episode 2500, α = 0.1, γ = 0.95): at s = (0,1,k=0,p=0) the agent chose
+*left*, but the 0.1 perpendicular slip pushed it into the top boundary —
+a wall bump, reward −6 (step −1, wall −5), s′ = (0,1,k=0,p=1). The update
+credits the *chosen* action with the *sampled* outcome:
 
 ```
-target   = r + γ·max Q(s′,·) = −1 + 0.95·(−11.006227) = −11.455916
-TD error = target − Q(s,a)   = −11.455916 − (−13.278179) = 1.822263
-Q(s,a)  ← −13.278179 + 0.1 · 1.822263 = −13.095952  ✓ (matches the log)
+target   = r + γ·max Q(s′,·) = −6 + 0.95·(−15.295502) = −20.530727
+TD error = target − Q(s,a)   = −20.530727 − (−14.021081) = −6.509646
+Q(s,a)  ← −14.021081 + 0.1 · (−6.509646) = −14.672045  ✓ (matches the log)
 ```
 
 ### 4.1 ε-decay schedules
 
 | run (3 seeds each) | episodes to 90% success | eval return | VI policy agreement |
 |---|---|---|---|
-| sparse / linear | ≈1546 | 190.8–191.6 | 57.9–58.6% |
-| sparse / exponential | ≈1099 | 189.4–190.5 | 51.2–51.9% |
+| sparse / linear | ≈1621 | 191.2–191.3 | 57.6–58.5% |
+| sparse / exponential | ≈1162 | 189.4–191.7 | 51.4–53.2% |
 
 ![Q-Learning decay schedules](results/figures/q_learning/q_learning_decay_schedules.png)
 
@@ -256,7 +265,7 @@ Exponential decay reaches sustained success ~1.4× earlier because ε
 collapses early and the agent exploits sooner — visible in all three
 panels, with tight seed bands. The price is coverage: linear decay keeps
 exploring longer and ends with visibly higher agreement with the optimal
-policy (58% vs 51%) across the state space, while both schedules reach the
+policy (58% vs 52%) across the state space, while both schedules reach the
 same asymptote (100% success, ~190 return). Learning speed and state-space
 coverage trade off against each other; neither schedule is "better"
 unconditionally.
@@ -265,23 +274,26 @@ unconditionally.
 
 | run (3 seeds each) | episodes to 90% success | eval return |
 |---|---|---|
-| sparse / exponential | ≈1099 | 189.4–190.5 |
-| shaped / exponential | **≈380** | 189.2–190.6 |
+| sparse / exponential | ≈1162 | 189.4–191.7 |
+| shaped / exponential | **≈388** | 189.9–190.1 |
 
 ![Q-Learning reward shaping](results/figures/q_learning/q_learning_reward_shaping.png)
 
 Shaping produces a ~3× jumpstart: the key-found rate saturates almost
 immediately (the potential gradient literally points at the key) and 90%
-success arrives at episode ≈380 vs ≈1099. Crucially the *final* returns are
+success arrives at episode ≈388 vs ≈1162. Crucially the *final* returns are
 statistically identical across all 12 runs — the potential-based invariance
 prediction of §2.3, confirmed empirically: shaping accelerated learning
 without changing the final policy's quality. Nor did it induce unwanted
-behavior: evaluation penalty entries (0.21–0.27/ep), wall hits
-(2.2–2.5/ep), gate bumps (0.22–0.45/ep) and steps (~44–46) are
-indistinguishable between sparse and shaped — no loops, no side-reward
-farming, no penalty over-avoidance. Interestingly the sparse- and
-shaped-trained greedy policies agree on only 49.3% of jointly-visited
-states while performing identically — see the near-tie analysis in §6.
+behavior: evaluation penalty entries (0.23–0.25/ep), wall hits
+(2.2–2.4/ep) and steps (~44–46) are indistinguishable between sparse and
+shaped, and the only visible difference — slightly more closed-gate waits
+for the shaped policies (0.45 vs 0.30/ep, worth −0.3 return) — is
+tie-breaking noise at the doorway, not a behavioral pathology: no loops, no
+side-reward farming, no penalty over-avoidance. Interestingly the sparse-
+and shaped-trained greedy policies agree on only 51.0% of 2680
+jointly-visited states while performing identically — see the near-tie
+analysis in §6.
 
 ![Q-Learning visit map](results/figures/q_learning/q_learning_visit_map.png)
 
@@ -313,37 +325,40 @@ exactly α·δ·γλ.
 
 | λ | episodes to 90% success | late-training return std (seeds) | eval return (seeds) |
 |---|---|---|---|
-| 0 | 1670 | 26.0 – 72.0 | 185.1 – 188.1 |
-| 0.3 | 1334 | 22.6 – 45.4 | 187.6 – 190.7 |
-| 0.7 | 982 | **16.5 – 24.4** | **189.5 – 190.8** |
-| 0.9 | **805** | 16.5 – 31.6 | 187.0 – 189.1 |
+| 0 | 1639 | 34.3 – 43.5 | 181.8 – 186.8 |
+| 0.3 | 1383 | 16.3 – 33.2 | 188.4 – 189.7 |
+| 0.7 | 957 | **15.5 – 16.0** | **189.8 – 190.4** |
+| 0.9 | **858** | 15.4 – 17.5 | 182.7 – 189.0 |
 
 ![SARSA lambda sweep](results/figures/sarsa/sarsa_lambda_sweep.png)
 
 Learning speed rises monotonically with λ — the four success curves sit in
-perfect order, with λ=0.9 reaching sustained success twice as fast as λ=0 —
+perfect order, with λ=0.9 reaching sustained success ~1.9× as fast as λ=0 —
 because each TD error updates the whole recent trajectory instead of a
 single state. But speed is not the whole story: λ=0.9's long traces also
-propagate the deltas of *exploratory slips* backward, injecting noise at
-convergence (higher late-run variance, slightly lower finals), while λ=0
-is both slowest and least stable across seeds because single-step backups
+propagate the deltas of *exploratory slips* backward, and the damage shows
+in its *final* policies — eval returns spread from 182.7 to 189.0 across
+seeds, the widest of any λ > 0 — while λ=0 is both slowest and weakest
+(finals 181.8–186.8, late-run std up to 43.5) because single-step backups
 correct distant stale values very slowly. **λ = 0.7 gives the best
 balance** — ~1.7× faster than λ=0 with the lowest, most consistent late
-variance and the best final returns (analytical question 4, §10).
+variance (15.5–16.0) and the best, tightest final returns (analytical
+question 4, §10).
 
 ### 5.2 δ and E over one episode
 
 ![SARSA delta/E trace](results/figures/sarsa/sarsa_delta_trace.png)
 
-For traced episode 4900 (49 steps; raw data in
+For traced episode 4900 (64 steps; raw data in
 [sarsa_step_trace.csv](results/raw_data/sarsa/sarsa_step_trace.csv) and
 [sarsa_trace_dump.csv](results/raw_data/sarsa/sarsa_trace_dump.csv)): by
 this point values have converged, so δ hovers near zero and spikes only at
-stochastic slips — sharply negative (≈−43) when a slip produces a
-worse-than-expected outcome (wall/penalty), positive (≈+27) on
-better-than-expected recoveries. Concretely, steps 1–2 were perpendicular
-slips into the border (r = −6, δ = −8.68 and −4.28), while steps 4–6 were
-productive corridor moves with small positive deltas (+1.28, +2.88, +1.40).
+stochastic surprises. Steps 1–6 are productive corridor moves with small
+positive deltas (+1.14, +0.96, +1.93, +1.42, +3.97, +0.27); step 8 is a
+perpendicular slip into a wall (r = −6, δ = −5.49); and the episode's
+extremes come as a *pair*: at step 30 a slip lands in a much worse cell
+(δ = −48.97) and the very next step's move corrects the estimate back
+(δ = +44.87) — TD error measuring surprise, then measuring the recovery.
 The right panel shows the eligibilities of the first four state-actions as
 parallel straight lines on the log axis — exactly (γλ)ᵗ = 0.855ᵗ decay
 (E(s₀,a₀): 0.855, 0.731, 0.625, 0.534, …) — so a surprise at step 10 still
@@ -362,14 +377,14 @@ SARSA(λ=0.7, seed 7). Data:
 | metric | Value Iteration | Q-Learning | SARSA(0.7) |
 |---|---|---|---|
 | type | model-based | model-free, off-policy | model-free, on-policy |
-| runtime (this machine) | **0.1 s** | 7.8 s | 54.1 s |
-| env samples to 90% success | — (has the model) | 612,908 | **526,282** |
-| total env samples (5000 eps) | 0 | 850,601 | 769,145 |
+| runtime (this machine) | **0.1 s** | 7.6 s | 54.3 s |
+| env samples to 90% success | — (has the model) | 629,392 | **503,053** |
+| total env samples (5000 eps) | 0 | 871,631 | 762,980 |
 | model file size | **103 KB** (V + π) | 271 KB | 274 KB |
-| eval return / steps | **191.6 / 43.4** | 190.0 / 45.6 | 190.6 / 44.4 |
-| V^π(start), exact | **9.60 = V\*** | 5.93 | 7.83 |
-| raw VI agreement (visited states) | — | 51.4% | 51.9% |
-| penalty entries / eval episode | 0.260 | 0.236 | **0.188** |
+| eval return / steps | **191.7 / 43.4** | 189.5 / 45.9 | 190.4 / 45.0 |
+| V^π(start), exact | **9.56 = V\*** | 6.28 | 7.19 |
+| raw VI agreement (visited states) | — | 53.2% | 52.4% |
+| penalty entries / eval episode | 0.260 | 0.290 | **0.178** |
 
 (Absolute runtimes vary with machine load between runs; the *ratios* —
 VI ~70–80× faster than Q-Learning, SARSA's trace loop ~7× Q-Learning — are
@@ -379,24 +394,24 @@ stable.)
 
 The two model-free methods traverse the same arc — random-walk timeouts,
 takeoff, convergence — with SARSA(0.7) consistently ahead in episodes and
-samples (~14% fewer steps to sustained success): its traces buy sample
+samples (~20% fewer steps to sustained success): its traces buy sample
 efficiency at the cost of per-step compute. Value Iteration does not appear
 on these axes at all, which *is* the comparison: given the exact
 transition model it produces the optimal policy in a tenth of a second and
-zero samples, while the model-free methods pay ~500–600k environment
+zero samples, while the model-free methods pay ~500–630k environment
 interactions for near-optimal policies. Note also what "near-optimal"
 means precisely: evaluated under the exact model, Q-Learning's policy is
-worth 5.93 at the start state and SARSA(0.7)'s 7.83, against V* = 9.60 —
+worth 6.28 at the start state and SARSA(0.7)'s 7.19, against V* = 9.56 —
 SARSA's learned policy is genuinely better here despite nearly identical
 raw agreement, so exact policy evaluation is a far sharper lens than
 action-matching percentages.
 
-**The near-tie effect.** Raw agreement with VI is only ~51% for both
+**The near-tie effect.** Raw agreement with VI is only ~52–53% for both
 learners even though both collect ~95%+ of the optimal return. The
 explanation, computed against exact Q*: **41.1%** of non-terminal states
 have a second action within 1.0 of optimal (28.6% within 0.5) — corridors
 where two directions are equally good — and noisy tabular estimates break
-such ties arbitrarily. Only ~19% of actual disagreements are near-ties
+such ties arbitrarily. Only ~18–20% of actual disagreements are near-ties
 (gap < 0.5); the rest sit in rarely-visited off-path states whose large
 gaps barely affect V^π(start), because the greedy policy hardly ever
 enters them.
@@ -419,42 +434,46 @@ The final-path figure is the on-policy complement to the disagreement
 maps: one greedy evaluation episode per algorithm, all under the same
 seed-999 slip stream, so any difference between panels is a policy
 difference, not luck. The bottom line is identical across all three —
-45 steps, return 198, decomposing as +250 (key + goal) − 45 step costs
-− 5 for one slip-induced wall bump − 2 for one closed-gate wait — yet the
-routes are not: Q-Learning cuts through the interior corridors around
-rows 5–9 while VI and SARSA(0.7) hug the west edge down to row 10. That
-is the near-tie analysis made visible — different greedy choices in
-equally-priced corridors produce different paths of exactly equal value,
-which is why ~51% raw agreement coexists with matching returns. In fact,
-replaying each policy's *intended* actions with slips disabled walks
-exactly 33 moves for all three agents — the BFS lower bound for the
-start→key→goal mission — so the ~10 extra realized moves are entirely the
-price of the 20% slip rate, not routing waste. The short
-dead-end spurs (Q-Learning near (4,2), VI just south-west of the goal) are
-perpendicular slips followed by an immediate correction — the 0.8/0.1/0.1
-dynamics in action. And every route funnels through ★ → gate → ◆: each
-agent pays exactly one −2 gate wait, confirming that the bottleneck cannot
-be planned away entirely, only phase-timed. The limitation is inherent:
-this is a single episode at a single seed — representative (45 steps sits
-within the 43.4–45.6 eval-mean band of the table above), but the aggregate
-table, not this picture, carries the comparison.
+44 steps, return 201, decomposing as +250 (key + goal) − 44 step costs
+− 5 for one slip-induced wall bump — yet the routes are not: Q-Learning
+cuts through the interior corridors while VI and SARSA(0.7) hug the west
+edge down to row 10. That is the near-tie analysis made visible —
+different greedy choices in equally-priced corridors produce different
+paths of exactly equal value, which is why ~52% raw agreement coexists
+with matching returns. Replaying each policy's *intended* actions with
+slips disabled walks 35 moves plus one deliberate closed-gate bump for all
+three agents, against the 33-move BFS floor — the clock-blind lower bound
+is unreachable under arrival semantics, and perfect play budgets ~3 steps
+of timing. In this sampled episode none of the agents actually paid a gate
+wait: the slips that cost them the wall bump also shifted their clocks
+onto an open-on-arrival tick — the timing budget and the slip noise can
+cancel. The short dead-end spurs in each panel are perpendicular slips
+followed by an immediate correction — the 0.8/0.1/0.1 dynamics in action.
+The limitation is inherent: this is a single episode at a single seed —
+representative (44 steps sits within the 43.4–45.9 eval-mean band of the
+table above), but the aggregate table, not this picture, carries the
+comparison.
 
 **Three sample states**
 ([comparison_sample_states.csv](results/raw_data/comparison/comparison_sample_states.csv)),
 chosen by distinct mechanisms:
 
-1. **Penalty-adjacent, (2,1), k=0, phase 4 — 669 visits.** VI: right;
-   SARSA: left (gap 3.13). The cell adjoins penalty (3,1); SARSA learned
-   the detour that keeps slip-risk away from the −10 pit. This is the
-   on-policy safety margin, quantified: its own exploratory slips into the
+1. **Penalty-adjacent, (12,10), k=1, phase 0 — 1131 visits.** The key cell
+   itself, just picked up, with penalty (12,11) directly to the right. VI:
+   down (Q* 83.75) — the fastest line to the door, accepting that a
+   perpendicular slip lands in the pit; SARSA: left (80.33, gap 3.43) —
+   step *away* from the pit first, then descend. This is the on-policy
+   safety margin, quantified: SARSA's own exploratory slips into the −10
    pit during training are priced into its Q-values.
-2. **Chamber near-tie, (15,15), k=1, phase 1 — 1418 visits.** VI: down;
-   Q-Learning: right; gap **exactly 0.000**. Two symmetric two-step routes
-   to the goal — the "disagreement" is a tie-break formality.
-3. **On the gate, (14,12), k=1, phase 0 — 5 visits.** VI: right (the door
-   is one step away); Q-Learning: down; gap 19.7. Agents pass *through*
-   the gate but almost never stand on it, so with five visits the estimate
-   never learned the doorway. Large errors live where data is scarce.
+2. **Corridor near-tie, (11,9), k=0, phase 4 — 923 visits.** VI: down;
+   Q-Learning: right; gap **0.019**. Two monotone staircases to the key
+   at (12,10) of equal length — the "disagreement" is a tie-break
+   formality despite heavy visitation.
+3. **On the gate, (14,12), k=1, phase 5 — 5 visits.** VI: right (the door
+   is one step away and passable); Q-Learning: down; gap 19.7. Agents pass
+   *through* the gate but almost never stand on it, so with five visits
+   the estimate never learned the doorway. Large errors live where data is
+   scarce.
 
 ---
 
@@ -487,33 +506,33 @@ scenarios share 5000 episodes, ε 0.3→0.05, 3 seeds. Jumpstart is measured
 as greedy evaluation of the initial table *before* any training (200
 episodes) — note that scratch is not handicapped by the low ε start,
 because a zero-initialized Q with random tie-breaking explores like ε≈1
-anyway. Target optima (VI): similar 192.5, different 179.8.
+anyway. Target optima (VI): similar 192.0, different 179.6.
 
 | target | scenario | jumpstart (success / return) | episodes to 90% | final return |
 |---|---|---|---|---|
-| similar | scratch | 0% / −3670 | 718 | 181.8 |
-| similar | full | **100% / −139** | **99** | 185.2 |
-| similar | scaled β=0.25 | 100% / −139 | **99** | **190.2** |
-| similar | scaled β=0.50 | 100% / −139 | **99** | 189.3 |
-| similar | scaled β=0.75 | 100% / −139 | **99** | 185.7 |
-| similar | selective | 0% / −2777 | 132 | 186.1 |
-| different | scratch | 0% / −3634 | 849 | 164.6 |
-| different | full | **0% / −3573** | 691 | 164.0 |
-| different | scaled β=0.25 | 0% / −3573 | 500 | 166.4 |
-| different | scaled β=0.50 | 0% / −3573 | **478** | 165.2 |
-| different | scaled β=0.75 | 0% / −3573 | 622 | 165.1 |
-| different | selective | 0% / −3539 | 519 | 163.8 |
+| similar | scratch | 0% / −3670 | 732 | 179.2 |
+| similar | full | **100% / −409** | **99** | 184.3 |
+| similar | scaled β=0.25 | 100% / −409 | **99** | **188.8** |
+| similar | scaled β=0.50 | 100% / −409 | **99** | 188.1 |
+| similar | scaled β=0.75 | 100% / −409 | **99** | 184.2 |
+| similar | selective | 0% / −2748 | 143 | 186.6 |
+| different | scratch | 0% / −3634 | 809 | 165.7 |
+| different | full | **0% / −3573** | 650 | 164.4 |
+| different | scaled β=0.25 | 0% / −3573 | **430** | **168.0** |
+| different | scaled β=0.50 | 0% / −3573 | 501 | 167.0 |
+| different | scaled β=0.75 | 0% / −3573 | 626 | 162.9 |
+| different | selective | 0% / −3538 | 612 | 164.7 |
 
 ![Transfer scenarios, similar target](results/figures/transfer/transfer_curves_similar.png)
 
 On the similar target transfer is unambiguously positive: the transferred
 tables succeed in 100% of pre-training greedy episodes (slowly — detouring
-around the 11 moved walls explains the −139 return) and sustain 90% success
-from the first measurable window (episode 99), ~7× sooner than scratch
-(718). Selective transfer, despite failing its jumpstart evaluation (its
-partial table has holes exactly where the maps changed), recovers almost
-the entire speed advantage (132) — the transferred half of the state space
-is the half that still matters.
+around the 11 moved walls and re-timing gate arrivals explains the −409
+return) and sustain 90% success from the first measurable window (episode
+99), ~7× sooner than scratch (732). Selective transfer, despite failing
+its jumpstart evaluation (its partial table has holes exactly where the
+maps changed), recovers almost the entire speed advantage (143) — the
+transferred half of the state space is the half that still matters.
 
 ![Q before vs after transfer, similar target](results/figures/transfer/transfer_q_diff_similar.png)
 
@@ -521,43 +540,46 @@ The spec's before/after-transfer view (full transfer, seed 7,
 [saved tables](results/models/transfer/)): per-cell max-action |ΔQ| on
 top, and below it the share of gate phases whose greedy action survived
 the 5000 target episodes. In Q-space "similar" becomes quantitative:
-mean max-action |ΔQ| is only 6.5 (k=0) / 3.3 (k=1), and the transferred
-greedy action survives in 83% / 68% of the states carrying data — the
+mean max-action |ΔQ| is only 7.0 (k=0) / 3.5 (k=1), and the transferred
+greedy action survives in 92% / 67% of the states carrying data — the
 bottom row stays blue along everything the mission actually uses. What
 does get rewritten is localized and legible: re-priced detours around the
 eleven moved walls (the mid-map band at k=0), while the largest single
 rewrite — (16,14) with key, in the chamber corner — is not terrain change
-at all (the chamber is untouched) but a data refresh: 189 source visits
-had left that corner's non-greedy actions stale-low (q_up 49.6 against a
-refreshed ~137), 613 target visits pulled them up, and the greedy action
-never flipped. |ΔQ| magnitude and policy change are different things; the
-red flecks in the top-right are the opposite case — near-tied off-path
-states whose greedy action flips on tiny updates, without consequence.
+at all (the chamber is untouched) but a data refresh: 203 source visits
+had left that corner's non-greedy actions stale-low (q_down 59.9 against
+a refreshed ~132), 399 target visits pulled them up, and the greedy
+action never flipped. |ΔQ| magnitude and policy change are different
+things; the red flecks in the top-right are the opposite case — near-tied
+off-path states whose greedy action flips on tiny updates, without
+consequence.
 
 ![Transfer scenarios, different target](results/figures/transfer/transfer_curves_different.png)
 
 On the different target transfer is no free lunch: the full-transfer
 jumpstart is 0% success, barely above scratch — the inherited policy
 marches confidently to where the key *used to be*. Learning speed still
-improves modestly (691 vs 849 episodes) because the with-key half of the
-table and the unchanged corridors remain useful. The full-transfer curve
-visibly lags even scratch around episodes 200–400 before recovering: the
-population-level signature of negative transfer being unlearned.
+improves modestly (650 vs 809 episodes) because the with-key half of the
+table and the unchanged corridors remain useful — but the early rolling
+success of full transfer (~19% in the first window, from episodes that
+stumble onto the new key) converts into sustained success only after the
+old key-seeking values are unlearned, which is why full transfer trails
+every scaled variant.
 
 ![Q before vs after transfer, different target](results/figures/transfer/transfer_q_diff_different.png)
 
 The same before/after view on the different target renders negative
-transfer as geography. Updates are ~4× larger than on the similar target
-(mean max-action |ΔQ| 23.9 at k=0, peaking at 136.9), and the dark
+transfer as geography. Updates are ~3× larger than on the similar target
+(mean max-action |ΔQ| 22.8 at k=0, peaking at 135.3), and the dark
 epicenter of the k=0 panel is exactly the **old-key basin** around
 (12,10) — the region where the transferred table was most confidently
 wrong, so every inherited value had to be torn down; the state dissected
 in §7.3 sits inside it, and its greedy action is among the overwritten
-(left → right). Only 33% of keyless states keep their transferred greedy
+(left → right). Only 34% of keyless states keep their transferred greedy
 action. The with-key half tells the opposite story and explains why full
-transfer still beat scratch by 158 episodes: door, chamber and goal are
+transfer still beat scratch by 159 episodes: door, chamber and goal are
 unchanged, and the k=1 panel keeps a solid blue key→door→goal corridor
-(46% kept overall, near 100% along the endgame route) — knowledge that
+(42% kept overall, near 100% along the endgame route) — knowledge that
 survived the map change intact. Transfer on this target is simultaneously
 harmful (keyless navigation) and helpful (endgame logic); the modest net
 speed gain is the balance of the two.
@@ -568,19 +590,20 @@ The β sweep isolates *transfer intensity*. Two clean facts: first,
 **β does not change the jumpstart** — argmax is scale-invariant, so every
 β > 0 shares the identical initial greedy policy (identical −3573 in the
 data); β acts only through update dynamics, where smaller β is a weaker
-prior that TD updates overwrite faster. That is why β is monotone in
-adaptation speed here (500 / 478 / 622 episodes for 0.25 / 0.5 / 0.75) and
-why β=0.25 achieves the best *final* return on the similar target (190.2 vs
-full's 185.2 — full-strength stale magnitudes linger). Second, with the
-5000-episode budget every scenario on the different target converges to the
-same **tabular asymptote** (164–166 vs the 179.8 optimum, ~64 steps vs 50.2
-optimal — the familiar ε-floor/fixed-α gap, not a transfer effect):
-transfer decides how *fast* the asymptote is reached (up to −44% episodes),
-never where it lies.
+prior that TD updates overwrite faster. That is why adaptation speed is
+cleanly monotone in β here (430 / 501 / 626 episodes for 0.25 / 0.5 /
+0.75, with full transfer — β=1 — slowest at 650) and why β=0.25 achieves
+the best *final* return on both targets (188.8 vs full's 184.3 on the
+similar map, 168.0 vs 164.4 on the different one — full-strength stale
+magnitudes linger). Second, with the 5000-episode budget every scenario on
+the different target converges to the same **tabular asymptote** (163–168
+vs the 179.6 optimum, ~58–68 steps vs 50.6 optimal — the familiar
+ε-floor/fixed-α gap, not a transfer effect): transfer decides how *fast*
+the asymptote is reached (up to −47% episodes), never where it lies.
 
 ### 7.3 A negative-transfer case, end to end
 
-Required by the spec: state **(12,12), k=0, phase 0** — two cells from the
+Required by the spec: state **(12,12), k=0, phase 2** — two cells from the
 old key, directly behind penalty cell (12,11). From
 [transfer_negative_case.csv](results/raw_data/transfer/transfer_negative_case.csv)
 (full-transfer run on the different target, Q(s) snapshots during
@@ -588,24 +611,30 @@ training):
 
 | episode | Q(up) | Q(down) | Q(left) | Q(right) | greedy |
 |---|---|---|---|---|---|
-| 0 (transferred) | −3.34 | −2.14 | **−1.14** | −1.73 | **left** |
-| 100 | −3.10 | −1.20 | **+13.46** | −1.73 | **left** |
-| 500 | −3.52 | −2.99 | −4.04 | **−2.93** | **right** |
-| 2500 | −3.92 | −4.03 | −4.90 | −3.92 | up (stale tie) |
-| target optimal (Q*) | 32.68 | 27.49 | 20.36 | **34.63** | **right** |
+| 0 (transferred) | −1.80 | −2.58 | **−0.43** | −1.51 | **left** |
+| 100 | −1.72 | +3.91 | **+12.84** | −1.58 | **left** |
+| 500 | −2.56 | −2.81 | −3.84 | −2.60 | up (stale tie) |
+| 1000 | −3.96 | −3.93 | −5.40 | −4.05 | down (stale tie) |
+| 2500 | −5.13 | −5.84 | −6.18 | **−5.05** | **right** |
+| 5000 | −5.18 | −5.84 | −6.18 | **−5.13** | **right** |
+| target optimal (Q*) | 32.80 | 27.57 | 20.42 | **34.82** | **right** |
 
 The arc has four acts. (1) The transferred greedy action walks **left,
 into the penalty cell, toward a key that no longer exists** — the
-target-optimal action is right, with an action gap of 14.3. (2) By episode
+target-optimal action is right, with an action gap of 14.4. (2) By episode
 100 the error has *grown*: bootstrapping from neighboring values that are
-still transfer-optimistic briefly amplifies q_left to +13.5 — negative
-transfer can compound before it corrects. (3) By episode 500 reality has
-extinguished it: q_left collapses and the greedy action flips to the
-target-optimal right. (4) Thereafter the converging policy stops visiting
-the state entirely; its values flatten into a stale near-tie. The
-correction happens exactly while the state still matters — then the state
-is abandoned. The §7.2 ΔQ map locates this arc spatially: (12,12) lies
-inside the dark k=0 rewrite basin centered on the removed key.
+still transfer-optimistic amplifies q_left to +12.8 — negative transfer
+compounds before it corrects. (3) By episode 500 reality has extinguished
+it — q_left collapses below its siblings and never leads again — but the
+correction is not a clean flip: all four values deflate into a near-tie
+band and the greedy label wanders across it (up at 500, down at 1000) as
+the now rarely-visited state drifts. (4) By episode 2500 the tie resolves
+to **right — the target-optimal action** — and holds to the end. The
+harmful knowledge is destroyed while the state still matters; the precise
+ordering of its residual values is settled only loosely, because the
+converged policy hardly ever comes back here. The §7.2 ΔQ map locates
+this arc spatially: (12,12) lies inside the dark k=0 rewrite basin
+centered on the removed key.
 
 ---
 
@@ -636,9 +665,9 @@ mode runs a fresh learner with the config's ε schedule and freezes at the
 5000-episode budget (ε shows DONE), after which the hero plays its learned
 table greedily. Selecting the source-trained Q-table on the *different*
 world shows §7.3's negative transfer live: the hero marches toward the
-removed key. A TRAIN session observed in the GUI (56% win rate around
-episode ~880, 89% by ~1100) matches the headless learning curves of §4 —
-the game is the same environment and the same update rules, animated.
+removed key. The TRAIN-mode win-rate trajectory tracks the headless
+learning curves of §4 — the game is the same environment and the same
+update rules, animated.
 
 ---
 
@@ -650,8 +679,8 @@ the game is the same environment and the same update rules, animated.
 | unit of progress | Bellman sweep | episode | episode |
 | output | V*, π* | Q, π | Q, E, π |
 | compute for this task | ~0.1 s | ~8 s | ~54 s |
-| samples for this task | 0 | ~850k steps | ~770k steps |
-| optimality reached | exact (proof by contraction) | ~95–99% of V*, asymptote set by ε-floor and fixed α | same class, slightly better here (V^π 7.83 vs 5.93) |
+| samples for this task | 0 | ~870k steps | ~760k steps |
+| optimality reached | exact (proof by contraction) | ~95–99% of V*, asymptote set by ε-floor and fixed α | same class, slightly better here (V^π 7.19 vs 6.28) |
 | behavior near danger | risk-neutral optimal | risk-neutral estimates | measurably safer routes (on-policy) |
 | sensitivity studied | γ (§3) | ε schedule, reward shaping (§4) | λ (§5) |
 
@@ -671,12 +700,12 @@ Markov violation our feature choice was designed to expose.
 off-policy max-target learns values of the *greedy* policy while behaving
 exploratorily; SARSA's on-policy target prices its own ε-greedy slips into
 Q. The measured consequence (§6): SARSA enters penalty cells least in
-greedy evaluation (0.188/ep vs Q-Learning 0.236, VI 0.260) and its
-penalty-adjacent deviations from VI are *systematic* (agreement 63.7% vs
-Q-Learning's 67.3%, both far above their ~51% global agreement — gaps near
-danger are sharp, not ties). Sample state 1 in §6 is the concrete exhibit:
-SARSA prefers a detour worth −3.13 in Q* because it keeps slip-risk away
-from a pit.
+greedy evaluation (0.178/ep vs Q-Learning 0.290, VI 0.260) and its
+penalty-adjacent deviations from VI are *systematic* (agreement 61.1% vs
+Q-Learning's 65.4%, both far above their ~52–53% global agreement — gaps
+near danger are sharp, not ties). Sample state 1 in §6 is the concrete
+exhibit: at the key cell itself SARSA prefers a detour worth −3.43 in Q*
+because it keeps slip-risk away from the adjacent pit.
 
 **Q3 — why does VI need the transition model while the others learn
 without it?** VI's backup averages over P(s′|s,a) explicitly — it *is* a
@@ -684,7 +713,7 @@ computation on the model (here exposed exactly by `transitions()`, §2.2).
 The TD methods replace that expectation with sampled transitions: each
 `step()` outcome is an unbiased draw from the same distribution. The trade
 in this project, measured: with the model, exact optimality in ~0.1 s and
-zero samples; without it, ~500–600k environment steps to near-optimal
+zero samples; without it, ~500–630k environment steps to near-optimal
 (§6). Advantage of model-free: it works when the model is unavailable or
 unwritable; limitation: sample cost and residual suboptimality concentrated
 where experience is scarce. Advantage of model-based: exactness and speed;
@@ -693,33 +722,34 @@ you (and our exact model made VI usable as ground truth for grading the
 others).
 
 **Q4 — which λ balances learning speed and stability best?** λ = 0.7
-(§5.1): 982 episodes to sustained success (vs 1670 at λ=0, 805 at λ=0.9),
-the lowest and most consistent late-training variance (16.5–24.4 return
-std vs up to 72 at λ=0 and 31.6 at λ=0.9) and the best final returns
-(189.5–190.8). λ=0.9 is faster to the 90% mark but noisier at convergence
-because long traces propagate exploratory-slip deltas backward.
+(§5.1): 957 episodes to sustained success (vs 1639 at λ=0, 858 at λ=0.9),
+the lowest and most consistent late-training variance (15.5–16.0 return
+std vs up to 43.5 at λ=0) and the best, tightest final returns
+(189.8–190.4). λ=0.9 is faster to the 90% mark but its long traces
+propagate exploratory-slip deltas backward, and its final policies pay for
+it — eval returns spread from 182.7 to 189.0 across seeds.
 
 **Q5 — three states where the model-free policy differs from VI, with
-local analysis.** §6: (2,1) — a systematic on-policy safety detour beside a
-pit (gap 3.13, 669 visits); (15,15) — an exact near-tie between two
-symmetric routes to the goal (gap 0.000, 1418 visits); (14,12) — a genuine
-error on the gate cell itself (gap 19.7) preserved by data scarcity
-(5 visits). Together they show disagreement has three different causes —
-risk shaping, tie-breaking, and missing data — and only the third is a
-real deficiency.
+local analysis.** §6: (12,10) with key — a systematic on-policy safety
+detour at the pit-adjacent key cell (gap 3.43, 1131 visits); (11,9) — a
+near-exact tie between two staircase routes to the key (gap 0.019, 923
+visits); (14,12) — a genuine error on the gate cell itself (gap 19.7)
+preserved by data scarcity (5 visits). Together they show disagreement has
+three different causes — risk shaping, tie-breaking, and missing data —
+and only the third is a real deficiency.
 
 **Q6 — similar vs different target in transfer.** §7.2: on the similar
 target, transferred tables jumpstart at 100% success and cut
-episodes-to-90% by ~7× (99 vs 718); on the different target the jumpstart
+episodes-to-90% by ~7× (99 vs 732); on the different target the jumpstart
 is 0% (the policy heads to the removed key), learning speed still improves
-(691 vs 849 full; 478 at β=0.5, −44%), and negative transfer appears —
+(650 vs 809 full; 430 at β=0.25, −47%), and negative transfer appears —
 concretely reconstructed in §7.3 with Q-value snapshots through its rise,
-correction and abandonment. With a converged budget, *final* performance
-is scenario-independent (the tabular asymptote); transfer moves only the
-speed of getting there. β never changes the initial greedy policy (argmax
-scale-invariance) — it tunes how strongly the prior resists correction,
-which helps on the similar target (β=0.25 final 190.2) and must be
-moderate on the different one (β=0.5 fastest).
+correction and late tie-resolution. With a converged budget, *final*
+performance is scenario-independent (the tabular asymptote); transfer
+moves only the speed of getting there. β never changes the initial greedy
+policy (argmax scale-invariance) — it tunes how strongly the prior resists
+correction, which is why adaptation speed is monotone in β and β=0.25
+posts the best finals on both targets.
 
 ---
 
@@ -755,10 +785,79 @@ requirement-driven iteration):
 
 All maps, models, CSVs and figures regenerate from the committed code and
 config: see [README — Reproducing the results](README.md#reproducing-the-results).
-The final artifact set in this repository was produced by deleting
-`results/` entirely and re-running the pipeline; map generation and every
-training run are seeded (training seeds {7, 21, 42}, evaluation seed 999),
-and the regenerated VI, Q-Learning, SARSA and comparison outputs matched
-the previous run line-for-line (up to the wall-clock runtime fields, which
-track machine load). Unit tests: `python -m pytest tests/`
-(60 tests).
+The artifact set in this repository is a single full pipeline run under
+the arrival-semantics dynamics; map generation and every training run are
+seeded (training seeds {7, 21, 42}, evaluation seed 999), so re-running
+the README commands reproduces the committed CSVs line-for-line (up to
+the wall-clock runtime fields, which track machine load) — a property we
+verified by deleting `results/` entirely and regenerating it. Unit tests:
+`python -m pytest tests/` (61 tests).
+
+## 13. Design retrospective: arrival vs departure gate semantics
+
+This project's gate originally used **departure semantics** — entry
+succeeded if the gate was open at the moment the move was chosen (that
+design, with its full consistent artifact set, is preserved on the `main`
+branch). The current design uses **arrival semantics** — the gate must be
+open on the phase *after* the step, when the agent actually occupies the
+doorway. Both are valid MDPs: the arrival phase is a deterministic
+function of the current one, so either rule is Markov in the same state
+space, and the change is a single predicate in `_resolve`
+([maze.py](environments/maze.py)). Having run the complete pipeline under
+both, we can compare them as *task designs*:
+
+| criterion | departure (`main`) | arrival (this design) |
+|---|---|---|
+| entry rule | gate open at decision time | gate open on arrival |
+| naive reactive rule "enter iff open now" | **exactly optimal** at the doorway | **wrong at 2 of 6 phases** (bounces on 2, misses 5) |
+| slip-free optimal walk | 33 moves + 0 waits = the BFS floor | 35 moves + 1 deliberate bump (~3 steps of timing budget) |
+| V*(start), γ = 0.95 | 9.60 | 9.56 (−0.04) |
+| VI eval return / steps | 191.61 / 43.4 | 191.66 / 43.4 |
+| Q-Learning episodes to 90% (sparse/exp) | ≈1099 | ≈1162 (+6%) |
+| SARSA(0.7) episodes to 90% | ≈982 | ≈957 (−3%) |
+| mistiming penalty at the approach cell | ~24 value | ~24 value |
+| state space, code, GUI | — | identical |
+
+**Verdict: the arrival design is the better task, at essentially zero
+cost.** The evidence:
+
+- **It makes the dynamic feature load-bearing everywhere.** Under
+  departure semantics the gate phase mattered for *route* planning, but
+  the threshold decision itself collapsed to a reactive rule — "enter if
+  the gate looks open" was provably optimal at the doorway. Under arrival
+  semantics that rule fails at phase 2 (the gate looks open but has
+  closed by the time you occupy it) and at phase 5 (looks closed, will be
+  open) — the agent must use `gate_phase` *predictively* even in the last
+  step. §3's phase grid shows exactly this: arrows enter the gate on
+  departures {5, 0, 1}, one tick ahead of what the eye expects. A state
+  variable the optimal policy consults at every distance from the feature
+  is a stronger answer to the spec's "must genuinely affect
+  decision-making" requirement.
+- **It prices waiting more richly.** The clock-blind BFS floor (33 moves)
+  is provably unattainable under arrival semantics: optimal play budgets
+  ~3 steps of timing — a two-step sidestep loop for two-tick waits, a
+  single deliberate −2 bump for one-tick waits (§3). The optimal agent
+  doesn't just avoid the gate when closed; it *schedules* itself.
+- **The cost is measurably negligible.** The optimum lost 0.04 of V*
+  (9.60 → 9.56) and no evaluation quality (191.6 vs 191.7); the learners'
+  convergence moved within seed noise and in *opposite* directions
+  (Q-Learning +6%, SARSA −3%), so the task got structurally deeper
+  without getting harder to learn. Every qualitative conclusion of
+  §§3–7 — shaping invariance, λ = 0.7's speed/stability optimum, SARSA's
+  safety margin, the near-tie explanation of raw agreement, positive and
+  negative transfer — reproduced under the new dynamics with shifted
+  numbers and unchanged structure, which is itself evidence that the
+  findings are properties of the methods, not artifacts of one dynamics
+  convention.
+- **The intuition matches physics.** A barrier stops a body when the body
+  reaches it, not when the foot leaves the ground. Arrival semantics puts
+  the collision check at the moment of occupancy: the dragon you watch
+  emerge is the dragon that blocks you. The one perceptual quirk it keeps
+  is the mirror of the one it removes — you can now bounce off a gate
+  that still *looks* open (IN·1) — but that quirk is precisely the
+  planning depth the design buys: appearances lag decisions by one tick,
+  and the HUD countdown gives the agent (and the player) exactly the
+  information needed to plan through it.
+
+The departure design remains the simpler pedagogical baseline; the
+arrival design is the one we submit.

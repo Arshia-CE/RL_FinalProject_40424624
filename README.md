@@ -20,7 +20,7 @@ maze_size  = 15 + (base_seed % 4)       # = 17  ->  17x17 maze
 |---|---|
 | Base seed | `2` |
 | Maze size | `17 x 17` |
-| Dynamic feature | **Periodic gate** (opens/closes on a fixed cycle) |
+| Dynamic feature | **Periodic gate** (opens/closes on a fixed cycle; entry requires the gate open **on arrival**) |
 | State representation | `s = (x, y, has_key, gate_phase)` |
 
 All experiment parameters live in [experiments/configs/default.json](experiments/configs/default.json)
@@ -135,7 +135,7 @@ and the committed maps — nothing is entered by hand. The full pipeline:
 pip install -r requirements.txt
 python environments/generator.py           # reproduces all 3 maps byte-for-byte
 python experiments/run_experiments.py      # all experiments (~60–90 min)
-python -m pytest tests/                    # 60 unit tests
+python -m pytest tests/                    # 61 unit tests
 ```
 
 `run_experiments.py` also accepts a subset, e.g.
