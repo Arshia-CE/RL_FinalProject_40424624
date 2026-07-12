@@ -23,6 +23,13 @@ maze_size  = 15 + (base_seed % 4)       # = 17  ->  17x17 maze
 | Dynamic feature | **Periodic gate** (opens/closes on a fixed cycle) |
 | State representation | `s = (x, y, has_key, gate_phase)` |
 
+> **Gate semantics — two designs.** This branch is the **main design**:
+> a move into the gate cell succeeds if the gate is open at the moment
+> the move is made (departure semantics). An alternative design in which
+> the gate must be open **on arrival** — the phase after the step — is
+> implemented, fully re-run and analyzed on the **`future_phase`**
+> branch; its report closes with a retrospective comparing the two.
+
 All experiment parameters live in [experiments/configs/default.json](experiments/configs/default.json)
 so every result is reproducible from the committed configuration.
 
