@@ -10,7 +10,7 @@ import pytest
 
 from environments.maze_map import NORMAL
 from environments.maze import (ACTION_DELTAS, ACTIONS, EV_DOOR_LOCKED,
-                               EV_DOOR_PASS, EV_GATE_BLOCKED, EV_GOAL,
+                               EV_DOOR_PASS, EV_ENERGY_OUT, EV_GOAL,
                                EV_KEY_PICKUP, EV_MOVE, EV_PENALTY,
                                EV_TIMEOUT, EV_WALL_HIT, EventLogger, MazeEnv,
                                State)
@@ -40,12 +40,6 @@ def det_step(env, state, action):
 @pytest.fixture()
 def det_env(maze, det_config):
     return MazeEnv(maze, det_config, seed=0)
-
-
-@pytest.fixture()
-def closed_phase(maze):
-    return next(p for p in range(maze.gate_period)
-                if p not in maze.gate_open_phases)
 
 
 class TestTransitionModel:
@@ -86,91 +80,93 @@ class TestTransitionModel:
 
 
 class TestDynamics:
-    def test_free_move_advances_position_and_phase(self, maze, det_env):
+    def test_free_move_advances_position_and_drains_energy(self, maze, det_env):
         # any normal -> normal move found on the map
         src = normal_neighbor(maze, maze.key)
         dst = normal_neighbor(maze, src)
-        state = State(src[0], src[1], 0, 0)
+        e0 = det_env.energy_initial
+        state = State(src[0], src[1], 0, e0)
         nxt, reward, terminated, _, info = det_step(det_env, state,
                                                     action_towards(src, dst))
         assert (nxt.r, nxt.c) == dst
-        assert nxt.phase == 1 and not terminated
+        assert nxt.energy == e0 - 1 and not terminated
         assert info["events"] == [EV_MOVE]
         assert reward == det_env.rewards["step"]
 
     def test_wall_bump_stays_and_penalizes(self, maze, det_env):
-        state = State(maze.start[0], maze.start[1], 0, 0)
+        e0 = det_env.energy_initial
+        state = State(maze.start[0], maze.start[1], 0, e0)
         wall_action = next(
             a for a, (dr, dc) in ACTION_DELTAS.items()
             if maze.is_wall((maze.start[0] + dr, maze.start[1] + dc)))
         nxt, reward, _, _, info = det_step(det_env, state, wall_action)
         assert (nxt.r, nxt.c) == tuple(maze.start)
-        assert nxt.phase == 1  # time moves on even when blocked
+        assert nxt.energy == e0 - 1  # a wasted step still burns fuel
         assert info["events"] == [EV_WALL_HIT]
         assert reward == det_env.rewards["step"] + det_env.rewards["wall_hit"]
 
     def test_locked_door_blocks_without_key(self, maze, det_env):
-        gate = tuple(maze.gate)  # the only cell in front of the door
-        state = State(gate[0], gate[1], 0, 0)
-        action = action_towards(gate, maze.door)
+        front = tuple(maze.gate)  # old gate cell: the only cell before the door
+        e0 = det_env.energy_initial
+        state = State(front[0], front[1], 0, e0)
+        action = action_towards(front, maze.door)
         nxt, reward, _, _, info = det_step(det_env, state, action)
-        assert (nxt.r, nxt.c) == gate
+        assert (nxt.r, nxt.c) == front
+        assert nxt.energy == e0 - 1
         assert info["events"] == [EV_DOOR_LOCKED]
         assert reward == (det_env.rewards["step"]
                           + det_env.rewards["locked_door_attempt"])
 
     def test_door_passes_with_key(self, maze, det_env):
-        gate = tuple(maze.gate)
-        state = State(gate[0], gate[1], 1, 0)
+        front = tuple(maze.gate)
+        state = State(front[0], front[1], 1, det_env.energy_initial)
         nxt, reward, _, _, info = det_step(det_env, state,
-                                           action_towards(gate, maze.door))
+                                           action_towards(front, maze.door))
         assert (nxt.r, nxt.c) == tuple(maze.door)
         assert info["events"] == [EV_DOOR_PASS]
         assert reward == det_env.rewards["step"] + det_env.rewards["door_pass"]
 
-    def test_gate_blocked_when_closed_open_when_not(self, maze, det_env,
-                                                    closed_phase):
+    def test_old_gate_cell_is_plain_floor(self, maze, det_env):
         src = normal_neighbor(maze, maze.gate)
         action = action_towards(src, maze.gate)
-        blocked = State(src[0], src[1], 1, closed_phase)
-        nxt, reward, _, _, info = det_step(det_env, blocked, action)
-        assert (nxt.r, nxt.c) == src
-        assert info["events"] == [EV_GATE_BLOCKED]
-        assert reward == (det_env.rewards["step"]
-                          + det_env.rewards["gate_blocked"])
-
-        open_state = State(src[0], src[1], 1, maze.gate_open_phases[0])
-        nxt, _, _, _, info = det_step(det_env, open_state, action)
-        assert (nxt.r, nxt.c) == tuple(maze.gate)
-        assert info["events"] == [EV_MOVE]
+        for energy in (det_env.energy_initial, 10):
+            nxt, reward, _, _, info = det_step(
+                det_env, State(src[0], src[1], 1, energy), action)
+            assert (nxt.r, nxt.c) == tuple(maze.gate)
+            assert info["events"] == [EV_MOVE]
+            assert reward == det_env.rewards["step"]
 
     def test_key_pickup_once(self, maze, det_env):
+        e0 = det_env.energy_initial
         src = normal_neighbor(maze, maze.key)
         action = action_towards(src, maze.key)
-        nxt, reward, _, _, info = det_step(det_env, State(src[0], src[1], 0, 0),
-                                           action)
+        nxt, reward, _, _, info = det_step(det_env,
+                                           State(src[0], src[1], 0, e0), action)
         assert nxt.has_key == 1
         assert info["events"] == [EV_KEY_PICKUP]
         assert reward == det_env.rewards["step"] + det_env.rewards["key_pickup"]
         # revisiting the key cell with the key is a plain move
-        nxt, reward, _, _, info = det_step(det_env, State(src[0], src[1], 1, 0),
-                                           action)
+        nxt, reward, _, _, info = det_step(det_env,
+                                           State(src[0], src[1], 1, e0), action)
         assert info["events"] == [EV_MOVE]
         assert reward == det_env.rewards["step"]
 
-    def test_penalty_cell_costs(self, maze, det_env):
+    def test_penalty_cell_costs_and_drains_extra(self, maze, det_env):
+        e0 = det_env.energy_initial
         pen = tuple(maze.penalty_cells[0])
         src = normal_neighbor(maze, pen)
-        nxt, reward, _, _, info = det_step(det_env, State(src[0], src[1], 0, 0),
+        nxt, reward, _, _, info = det_step(det_env,
+                                           State(src[0], src[1], 0, e0),
                                            action_towards(src, pen))
         assert (nxt.r, nxt.c) == pen
+        assert nxt.energy == e0 - 1 - det_env.penalty_drain
         assert info["events"] == [EV_PENALTY]
         assert reward == (det_env.rewards["step"]
                           + det_env.rewards["penalty_cell"])
 
     def test_goal_terminates(self, maze, det_env):
         src = normal_neighbor(maze, maze.goal)
-        state = State(src[0], src[1], 1, 0)
+        state = State(src[0], src[1], 1, det_env.energy_initial)
         nxt, reward, terminated, _, info = det_step(det_env, state,
                                                     action_towards(src, maze.goal))
         assert terminated
@@ -178,6 +174,61 @@ class TestDynamics:
         assert reward == det_env.rewards["step"] + det_env.rewards["goal"]
         assert det_env.is_terminal(nxt)
         assert det_env.transitions(nxt, 0) == []
+
+
+class TestEnergy:
+    def test_running_out_terminates_as_death(self, maze, det_env):
+        src = normal_neighbor(maze, maze.key)
+        dst = normal_neighbor(maze, src)
+        state = State(src[0], src[1], 0, 1)
+        nxt, reward, terminated, truncated, info = det_step(
+            det_env, state, action_towards(src, dst))
+        assert terminated and not truncated
+        assert nxt.energy == 0
+        assert info["events"] == [EV_MOVE, EV_ENERGY_OUT]
+        assert reward == det_env.rewards["step"] + det_env.death_reward
+        assert det_env.is_terminal(nxt)
+        assert det_env.transitions(nxt, 0) == []
+
+    def test_wasted_bump_still_burns_the_last_unit(self, maze, det_env):
+        state = State(maze.start[0], maze.start[1], 0, 1)
+        wall_action = next(
+            a for a, (dr, dc) in ACTION_DELTAS.items()
+            if maze.is_wall((maze.start[0] + dr, maze.start[1] + dc)))
+        nxt, reward, terminated, _, info = det_step(det_env, state, wall_action)
+        assert terminated and nxt.energy == 0
+        assert info["events"] == [EV_WALL_HIT, EV_ENERGY_OUT]
+        assert reward == (det_env.rewards["step"] + det_env.rewards["wall_hit"]
+                          + det_env.death_reward)
+
+    def test_pit_entry_can_kill(self, maze, det_env):
+        pen = tuple(maze.penalty_cells[0])
+        src = normal_neighbor(maze, pen)
+        state = State(src[0], src[1], 0, det_env.penalty_drain + 1)
+        nxt, reward, terminated, _, info = det_step(det_env, state,
+                                                    action_towards(src, pen))
+        assert terminated and nxt.energy == 0
+        assert info["events"] == [EV_PENALTY, EV_ENERGY_OUT]
+        assert reward == (det_env.rewards["step"]
+                          + det_env.rewards["penalty_cell"]
+                          + det_env.death_reward)
+
+    def test_pit_drain_clamps_at_zero(self, maze, det_env):
+        pen = tuple(maze.penalty_cells[0])
+        src = normal_neighbor(maze, pen)
+        state = State(src[0], src[1], 0, 2)  # 2 - (1 + drain) would go negative
+        nxt, _, terminated, _, _ = det_step(det_env, state,
+                                            action_towards(src, pen))
+        assert terminated and nxt.energy == 0
+
+    def test_goal_on_last_unit_is_success(self, maze, det_env):
+        src = normal_neighbor(maze, maze.goal)
+        state = State(src[0], src[1], 1, 1)
+        nxt, reward, terminated, _, info = det_step(
+            det_env, state, action_towards(src, maze.goal))
+        assert terminated and nxt.energy == 0
+        assert info["events"] == [EV_GOAL]  # arrival on the last unit wins
+        assert reward == det_env.rewards["step"] + det_env.rewards["goal"]
 
 
 class TestEpisode:
@@ -195,6 +246,21 @@ class TestEpisode:
         assert EV_TIMEOUT in info["events"]
         with pytest.raises(RuntimeError):
             env.step(wall_action)
+
+    def test_energy_runs_out_before_the_step_cap(self, maze, det_config):
+        # with the default budgets the cap never binds: death ends the episode
+        env = MazeEnv(maze, det_config, seed=0)
+        assert env.energy_initial < env.max_steps
+        env.reset()
+        wall_action = next(
+            a for a, (dr, dc) in ACTION_DELTAS.items()
+            if maze.is_wall((maze.start[0] + dr, maze.start[1] + dc)))
+        terminated = truncated = False
+        while not (terminated or truncated):
+            _, _, terminated, truncated, info = env.step(wall_action)
+        assert terminated and not truncated
+        assert EV_ENERGY_OUT in info["events"]
+        assert env.steps == env.energy_initial
 
     def test_step_before_reset_raises(self, maze, config):
         with pytest.raises(RuntimeError):
@@ -227,7 +293,7 @@ class TestRewards:
                 continue
             for action in ACTIONS:
                 # the same s' can occur with different rewards (e.g. wall hit
-                # vs gate bump), so compare the full outcome distributions
+                # vs pit entry), so compare the full outcome distributions
                 expected = sorted(
                     (round(p, 9), nxt, done,
                      round(r + gamma * shaped._phi(nxt) - shaped._phi(state), 9))
@@ -237,14 +303,16 @@ class TestRewards:
                     for p, nxt, r, done in shaped.transitions(state, action))
                 assert got == expected
 
-    def test_phi_zero_at_goal(self, maze, config):
+    def test_phi_zero_at_terminals(self, maze, config):
         env = MazeEnv(maze, config, reward_mode="shaped")
-        assert env._phi(State(maze.goal[0], maze.goal[1], 1, 0)) == 0.0
+        assert env._phi(State(maze.goal[0], maze.goal[1], 1, 50)) == 0.0
+        # exhausted energy is terminal too, wherever the agent died
+        assert env._phi(State(maze.start[0], maze.start[1], 0, 0)) == 0.0
 
     def test_phi_continuous_at_key_pickup(self, maze, config):
         env = MazeEnv(maze, config, reward_mode="shaped")
-        without = env._phi(State(maze.key[0], maze.key[1], 0, 0))
-        with_key = env._phi(State(maze.key[0], maze.key[1], 1, 0))
+        without = env._phi(State(maze.key[0], maze.key[1], 0, 50))
+        with_key = env._phi(State(maze.key[0], maze.key[1], 1, 50))
         assert without == pytest.approx(with_key)
 
     def test_shaping_does_not_change_dynamics(self, maze, config):
@@ -282,6 +350,6 @@ class TestEventLogger:
         first = rows[0]
         assert first["episode"] == "0" and first["step"] == "1"
         # the row carries the full (s, a, r, s') needed to redo a Q-update
-        assert {"r", "c", "has_key", "phase", "intended_action", "reward",
+        assert {"r", "c", "has_key", "energy", "intended_action", "reward",
                 "next_r", "next_c", "next_has_key",
-                "next_phase"} <= set(first)
+                "next_energy"} <= set(first)

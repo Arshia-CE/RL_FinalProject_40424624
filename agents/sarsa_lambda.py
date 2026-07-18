@@ -19,7 +19,7 @@ if str(PROJECT_ROOT) not in sys.path:
 from agents.q_learning import epsilon_schedule
 from environments.maze_map import DEFAULT_CONFIG_PATH, MAPS_DIR, MazeMap
 from environments.maze import (ACTIONS, EV_DOOR_LOCKED, EV_DOOR_PASS,
-                               EV_GATE_BLOCKED, EV_KEY_PICKUP, EV_PENALTY,
+                               EV_ENERGY_OUT, EV_KEY_PICKUP, EV_PENALTY,
                                EV_TIMEOUT, EV_WALL_HIT, MazeEnv, State)
 
 MODELS_DIR = PROJECT_ROOT / "results" / "models"
@@ -128,10 +128,10 @@ class SarsaLambdaAgent:
                     step_trace.append({
                         "episode": episode, "step": info["step"],
                         "r": state.r, "c": state.c, "has_key": state.has_key,
-                        "phase": state.phase, "action": action,
+                        "energy": state.energy, "action": action,
                         "reward": reward, "next_r": nxt.r, "next_c": nxt.c,
                         "next_has_key": nxt.has_key,
-                        "next_phase": nxt.phase, "next_action": next_action,
+                        "next_energy": nxt.energy, "next_action": next_action,
                         "events": "|".join(info["events"]),
                         **stats,
                         "alpha": self.alpha, "gamma": self.gamma,
@@ -140,18 +140,19 @@ class SarsaLambdaAgent:
                     trace_dump += [{
                         "episode": episode, "step": info["step"],
                         "r": s.r, "c": s.c, "has_key": s.has_key,
-                        "phase": s.phase, "action": a,
+                        "energy": s.energy, "action": a,
                         "E": round(float(evec[a]), 6)}
                         for s, evec in self.E.items()
                         for a in ACTIONS if evec[a] > 0]
                 state, action = nxt, next_action
+            death = int(events[EV_ENERGY_OUT] > 0)
             history.append({
                 "episode": episode, "epsilon": round(eps, 4),
                 "steps": self.env.steps, "return": round(ep_return, 2),
-                "success": int(terminated),
+                "success": int(terminated and not death),
                 "wall_hits": events[EV_WALL_HIT],
                 "penalty_entries": events[EV_PENALTY],
-                "gate_blocked": events[EV_GATE_BLOCKED],
+                "energy_left": state.energy, "death": death,
                 "locked_door_attempts": events[EV_DOOR_LOCKED],
                 "door_passes": events[EV_DOOR_PASS],
                 "key_picked": int(events[EV_KEY_PICKUP] > 0),
@@ -201,20 +202,21 @@ def main() -> None:
     print(f"last 100: success {sum(r['success'] for r in last)}%, "
           f"mean return {sum(r['return'] for r in last) / 100:.1f}, "
           f"mean steps {sum(r['steps'] for r in last) / 100:.1f}")
-    print(f"visited {len(agent.visited_states())} of 2796 states")
+    print(f"visited {len(agent.visited_states())} of "
+          f"{len(env.enumerate_states())} states")
 
     print(f"traced episode {scfg['trace_episode']} "
           f"({len(step_trace)} steps): delta and trace evolution")
     for row in step_trace[:6]:
         print(f"  step {row['step']}: s=({row['r']},{row['c']},"
-              f"k={row['has_key']},p={row['phase']}) a={row['action']} "
+              f"k={row['has_key']},e={row['energy']}) a={row['action']} "
               f"r={row['reward']:+.0f} delta={row['delta']:+.4f} "
               f"active traces={row['active_traces']}")
     first = step_trace[0]
-    origin = (first["r"], first["c"], first["has_key"], first["phase"],
+    origin = (first["r"], first["c"], first["has_key"], first["energy"],
               first["action"])
     decay = [row["E"] for row in trace_dump
-             if (row["r"], row["c"], row["has_key"], row["phase"],
+             if (row["r"], row["c"], row["has_key"], row["energy"],
                  row["action"]) == origin]
     print(f"E(s_0,a_0) over successive steps: "
           f"{[round(e, 4) for e in decay[:6]]} (gamma*lambda = "

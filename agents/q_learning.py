@@ -18,7 +18,7 @@ if str(PROJECT_ROOT) not in sys.path:
 
 from environments.maze_map import DEFAULT_CONFIG_PATH, MAPS_DIR, MazeMap
 from environments.maze import (ACTIONS, EV_DOOR_LOCKED, EV_DOOR_PASS,
-                               EV_GATE_BLOCKED, EV_KEY_PICKUP, EV_PENALTY,
+                               EV_ENERGY_OUT, EV_KEY_PICKUP, EV_PENALTY,
                                EV_TIMEOUT, EV_WALL_HIT, MazeEnv, State)
 
 MODELS_DIR = PROJECT_ROOT / "results" / "models"
@@ -99,22 +99,24 @@ class QLearningAgent:
                     trace.append({
                         "episode": episode, "step": info["step"],
                         "r": state.r, "c": state.c, "has_key": state.has_key,
-                        "phase": state.phase, "action": action,
+                        "energy": state.energy, "action": action,
                         "reward": reward, "next_r": nxt.r, "next_c": nxt.c,
-                        "next_has_key": nxt.has_key, "next_phase": nxt.phase,
+                        "next_has_key": nxt.has_key,
+                        "next_energy": nxt.energy,
                         "events": "|".join(info["events"]),
                         **stats,
                         "alpha": self.alpha, "gamma": self.gamma,
                         "epsilon": round(eps, 4),
                     })
                 state = nxt
+            death = int(events[EV_ENERGY_OUT] > 0)
             history.append({
                 "episode": episode, "epsilon": round(eps, 4),
                 "steps": self.env.steps, "return": round(ep_return, 2),
-                "success": int(terminated),
+                "success": int(terminated and not death),
                 "wall_hits": events[EV_WALL_HIT],
                 "penalty_entries": events[EV_PENALTY],
-                "gate_blocked": events[EV_GATE_BLOCKED],
+                "energy_left": state.energy, "death": death,
                 "locked_door_attempts": events[EV_DOOR_LOCKED],
                 "door_passes": events[EV_DOOR_PASS],
                 "key_picked": int(events[EV_KEY_PICKUP] > 0),
@@ -168,14 +170,15 @@ def main() -> None:
     print(f"last 100 episodes: success {sum(r['success'] for r in last)}%, "
           f"mean return {sum(r['return'] for r in last) / 100:.1f}, "
           f"mean steps {sum(r['steps'] for r in last) / 100:.1f}")
-    print(f"visited {len(agent.visited_states())} of 2796 states")
+    print(f"visited {len(agent.visited_states())} of "
+          f"{len(env.enumerate_states())} states")
 
     row = trace[0]
     print("sample real Q-update (reconstructable by hand):")
-    print(f"  s=({row['r']},{row['c']},k={row['has_key']},p={row['phase']}) "
+    print(f"  s=({row['r']},{row['c']},k={row['has_key']},e={row['energy']}) "
           f"a={row['action']} r={row['reward']} -> "
           f"s'=({row['next_r']},{row['next_c']},k={row['next_has_key']},"
-          f"p={row['next_phase']})")
+          f"e={row['next_energy']})")
     print(f"  Q before {row['q_before']}, max_a' Q(s') {row['max_next_q']}, "
           f"target {row['td_target']}, TD error {row['td_error']}, "
           f"Q after {row['q_after']}")

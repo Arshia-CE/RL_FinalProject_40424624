@@ -6,7 +6,7 @@ import pytest
 
 from agents.q_learning import QLearningAgent, epsilon_schedule
 from agents.sarsa_lambda import SarsaLambdaAgent
-from environments.maze import MazeEnv, State
+from environments.maze import EV_ENERGY_OUT, MazeEnv, State
 
 
 @pytest.fixture()
@@ -14,16 +14,17 @@ def env(maze, config):
     return MazeEnv(maze, config, seed=0)
 
 
-def two_states(maze):
-    s1 = State(maze.start[0], maze.start[1], 0, 0)
-    s2 = State(maze.start[0], maze.start[1], 0, 1)
+def two_states(env, maze):
+    e0 = env.energy_initial
+    s1 = State(maze.start[0], maze.start[1], 0, e0)
+    s2 = State(maze.start[0], maze.start[1], 0, e0 - 1)
     return s1, s2
 
 
 class TestQLearningUpdate:
     def test_backup_math(self, env, maze):
         agent = QLearningAgent(env, alpha=0.5, gamma=0.9)
-        s1, s2 = two_states(maze)
+        s1, s2 = two_states(env, maze)
         agent.q_values(s1)[:] = [1.0, 2.0, 3.0, 4.0]
         agent.q_values(s2)[:] = [0.0, 10.0, 0.0, 0.0]
         stats = agent.update(s1, 0, reward=5.0, next_state=s2,
@@ -36,11 +37,23 @@ class TestQLearningUpdate:
 
     def test_terminal_has_no_bootstrap(self, env, maze):
         agent = QLearningAgent(env, alpha=0.5, gamma=0.9)
-        s1, s2 = two_states(maze)
+        s1, s2 = two_states(env, maze)
         agent.q_values(s1)[:] = [1.0, 0.0, 0.0, 0.0]
         agent.q_values(s2)[:] = [99.0, 99.0, 99.0, 99.0]
         agent.update(s1, 0, reward=5.0, next_state=s2, terminated=True)
         assert agent.Q[s1][0] == pytest.approx(1 + 0.5 * (5 - 1))
+
+    def test_death_transition_zeroes_bootstrap(self, env, maze):
+        agent = QLearningAgent(env, alpha=0.5, gamma=0.9)
+        state = State(maze.start[0], maze.start[1], 0, 1)
+        env.reset(state=state)
+        nxt, reward, terminated, _, info = env.step(0)
+        assert terminated and nxt.energy == 0
+        assert EV_ENERGY_OUT in info["events"]
+        agent.q_values(nxt)[:] = 99.0  # must be ignored: death is terminal
+        stats = agent.update(state, 0, reward, nxt, terminated)
+        assert stats["max_next_q"] == 0.0
+        assert agent.Q[state][0] == pytest.approx(0.5 * reward)
 
     def test_epsilon_schedules_hit_endpoints(self):
         for kind in ("linear", "exponential"):
@@ -57,7 +70,7 @@ class TestSarsaLambda:
 
     def test_lambda0_is_one_step_sarsa(self, env, maze):
         agent = self.make(env, lam=0.0)
-        s1, s2 = two_states(maze)
+        s1, s2 = two_states(env, maze)
         agent.q_values(s1)[:] = [1.0, 2.0, 3.0, 4.0]
         agent.q_values(s2)[:] = [0.0, 10.0, 0.0, 7.0]
         agent.begin_episode()
@@ -73,8 +86,8 @@ class TestSarsaLambda:
 
     def test_trace_propagates_delta_backwards(self, env, maze):
         agent = self.make(env, lam=0.5)
-        s1, s2 = two_states(maze)
-        s3 = State(s1.r, s1.c, 0, 2)
+        s1, s2 = two_states(env, maze)
+        s3 = State(s1.r, s1.c, 0, s1.energy - 2)
         agent.begin_episode()
         agent.update(s1, 0, reward=0.0, next_state=s2, next_action=1,
                      terminated=False)
@@ -87,7 +100,7 @@ class TestSarsaLambda:
         assert agent.Q[s2][1] == pytest.approx(0.5 * delta2 * 1.0)
 
     def test_replacing_vs_accumulating_on_revisit(self, env, maze):
-        s1, s2 = two_states(maze)
+        s1, s2 = two_states(env, maze)
         for trace_type, expected in (("replacing", 1.0),
                                      ("accumulating", 1.45)):
             agent = self.make(env, lam=0.5, trace_type=trace_type)
@@ -100,7 +113,7 @@ class TestSarsaLambda:
 
     def test_traces_reset_between_episodes(self, env, maze):
         agent = self.make(env, lam=0.9)
-        s1, s2 = two_states(maze)
+        s1, s2 = two_states(env, maze)
         agent.begin_episode()
         agent.update(s1, 0, 1.0, s2, 1, terminated=False)
         assert agent.E
@@ -109,7 +122,7 @@ class TestSarsaLambda:
 
     def test_terminal_zeroes_bootstrap(self, env, maze):
         agent = self.make(env, lam=0.9)
-        s1, s2 = two_states(maze)
+        s1, s2 = two_states(env, maze)
         agent.q_values(s1)[:] = [2.0, 0.0, 0.0, 0.0]
         agent.q_values(s2)[:] = [50.0, 50.0, 50.0, 50.0]
         agent.begin_episode()
@@ -125,9 +138,12 @@ class TestTrainingEventLogs:
 
     def check_history(self, history):
         for row in history:
-            assert {"door_passes", "timeout"} <= row.keys()
-            # the step cap is the only source of truncation
-            assert row["timeout"] == 1 - row["success"]
+            assert {"door_passes", "timeout", "energy_left",
+                    "death"} <= row.keys()
+            # every episode ends exactly one way: goal, death or timeout
+            assert row["success"] + row["death"] + row["timeout"] == 1
+            if row["death"]:
+                assert row["energy_left"] == 0
             if row["success"]:
                 assert row["door_passes"] >= 1 and row["key_picked"] == 1
 

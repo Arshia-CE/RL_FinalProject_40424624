@@ -22,13 +22,19 @@
         "comment": "step cap = multiplier x number of passable cells; final value recorded here per the spec"
     },
 
+    "energy": {
+        "initial": 100,
+        "penalty_drain": 5,
+        "death_reward": -50,
+        "comment": "every step burns 1 energy (bumps included); entering a penalty cell drains penalty_drain extra; at 0 the episode terminates as a death worth death_reward, costlier than any plausible continued struggle so giving up early is never optimal"
+    },
+
     "rewards": {
         "sparse": {
             "step": -1,
             "wall_hit": -5,
             "penalty_cell": -10,
             "locked_door_attempt": -2,
-            "gate_blocked": -2,
             "key_pickup": 50,
             "door_pass": 0,
             "goal": 200,

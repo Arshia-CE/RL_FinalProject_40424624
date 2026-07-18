@@ -1,8 +1,9 @@
 """Dynamic maze environment modeled as an MDP.
 
-State s = (r, c, has_key, gate_phase); actions U/D/L/R with 0.8/0.1/0.1
-stochasticity. Walls, the locked door (keyless) and the closed gate block by
-keeping the agent in place; the gate phase advances every step. Rewards are
+State s = (r, c, has_key, energy); actions U/D/L/R with 0.8/0.1/0.1
+stochasticity. Walls and the locked door (keyless) block by keeping the
+agent in place; every step burns 1 energy (bumps included), penalty cells
+drain extra, and hitting 0 terminates the episode as a death. Rewards are
 sparse or potential-based shaped; the goal terminates, the step cap
 truncates. transitions() exposes the exact model for Value Iteration, built
 from the same resolution code that step() samples from.
@@ -32,25 +33,25 @@ ACTION_DELTAS = {UP: (-1, 0), DOWN: (1, 0), LEFT: (0, -1), RIGHT: (0, 1)}
 PERPENDICULAR = {UP: (LEFT, RIGHT), DOWN: (LEFT, RIGHT),
                  LEFT: (UP, DOWN), RIGHT: (UP, DOWN)}
 
-# events (the spec's minimum loggable set, plus gate_blocked for our feature)
+# events (the spec's minimum loggable set, plus energy_out for our feature)
 EV_MOVE = "move"
 EV_WALL_HIT = "wall_hit"
 EV_PENALTY = "penalty_cell"
 EV_KEY_PICKUP = "key_pickup"
 EV_DOOR_LOCKED = "locked_door_attempt"
 EV_DOOR_PASS = "door_pass"
-EV_GATE_BLOCKED = "gate_blocked"
+EV_ENERGY_OUT = "energy_out"
 EV_GOAL = "goal_reached"
 EV_TIMEOUT = "timeout"
 
-# event -> key in the reward config (EV_MOVE/EV_TIMEOUT carry no extra reward)
+# event -> key in the reward config (EV_MOVE/EV_TIMEOUT carry no extra
+# reward; EV_ENERGY_OUT is paid from the energy config block instead)
 EVENT_REWARD_KEY = {
     EV_WALL_HIT: "wall_hit",
     EV_PENALTY: "penalty_cell",
     EV_KEY_PICKUP: "key_pickup",
     EV_DOOR_LOCKED: "locked_door_attempt",
     EV_DOOR_PASS: "door_pass",
-    EV_GATE_BLOCKED: "gate_blocked",
     EV_GOAL: "goal",
 }
 
@@ -59,7 +60,7 @@ class State(NamedTuple):
     r: int
     c: int
     has_key: int
-    phase: int
+    energy: int
 
 
 def _bfs_distances(maze: MazeMap, source: Position,
@@ -94,6 +95,9 @@ class MazeEnv:
         self.shaping_scale = config["rewards"]["shaped"]["shaping_scale"]
         self.p_intended = config["transition"]["p_intended"]
         self.p_perpendicular = config["transition"]["p_perpendicular"]
+        self.energy_initial = int(config["energy"]["initial"])
+        self.penalty_drain = int(config["energy"]["penalty_drain"])
+        self.death_reward = float(config["energy"]["death_reward"])
         self.max_steps = int(config["episode"]["step_cap_multiplier"]
                              * maze.passable_count)
         # distance maps for the shaping potential (and later analysis)
@@ -114,7 +118,8 @@ class MazeEnv:
         tests, evaluation and the GUI)."""
         if seed is not None:
             self._rng = random.Random(seed)
-        self._state = (State(self.maze.start[0], self.maze.start[1], 0, 0)
+        self._state = (State(self.maze.start[0], self.maze.start[1], 0,
+                             self.energy_initial)
                        if state is None else state)
         self._steps = 0
         self._terminated = False
@@ -158,17 +163,14 @@ class MazeEnv:
     # MDP model
 
     def is_terminal(self, state: State) -> bool:
-        return (state.r, state.c) == self.maze.goal
-
-    def gate_open(self, phase: int) -> bool:
-        return phase in self.maze.gate_open_phases
+        return (state.r, state.c) == self.maze.goal or state.energy == 0
 
     def enumerate_states(self) -> list[State]:
-        """All states: non-wall cells x has_key x gate phase."""
-        return [State(r, c, k, p)
+        """All states: non-wall cells x has_key x energy level."""
+        return [State(r, c, k, e)
                 for r in range(self.maze.size) for c in range(self.maze.size)
                 if not self.maze.is_wall((r, c))
-                for k in (0, 1) for p in range(self.maze.gate_period)]
+                for k in (0, 1) for e in range(self.energy_initial + 1)]
 
     def transitions(self, state: State,
                     action: int) -> list[tuple[float, State, float, bool]]:
@@ -193,17 +195,14 @@ class MazeEnv:
                  direction: int) -> tuple[State, float, list[str], bool]:
         """Deterministic outcome of moving in ``direction`` (no sampling,
         no step-cap logic); shared by step() and transitions()."""
-        r, c, k, phase = state
+        r, c, k, energy = state
         dr, dc = ACTION_DELTAS[direction]
         target = (r + dr, c + dc)
-        next_phase = (phase + 1) % self.maze.gate_period
         nr, nc, nk = r, c, k
         if self.maze.is_wall(target):
             events = [EV_WALL_HIT]
         elif target == self.maze.door and not k:
             events = [EV_DOOR_LOCKED]
-        elif target == self.maze.gate and not self.gate_open(phase):
-            events = [EV_GATE_BLOCKED]
         else:
             nr, nc = target
             cell = self.maze.cell(target)
@@ -218,20 +217,29 @@ class MazeEnv:
                 events = [EV_GOAL]
             else:
                 events = [EV_MOVE]
-        nxt = State(nr, nc, nk, next_phase)
-        done = (nr, nc) == self.maze.goal
+        drain = 1 + (self.penalty_drain if EV_PENALTY in events else 0)
+        ne = max(0, energy - drain)
+        nxt = State(nr, nc, nk, ne)
+        goal = (nr, nc) == self.maze.goal
+        dead = ne == 0 and not goal  # arriving on the last unit still wins
+        if dead:
+            events = events + [EV_ENERGY_OUT]
+        done = goal or dead
         reward = float(self.rewards["step"])
         for ev in events:
             if ev in EVENT_REWARD_KEY:
                 reward += self.rewards[EVENT_REWARD_KEY[ev]]
+        if dead:
+            reward += self.death_reward
         if self.reward_mode == "shaped":
             reward += (self.shaping_gamma * self._phi(nxt) - self._phi(state))
         return nxt, reward, events, done
 
     def _phi(self, state: State) -> float:
-        """Shaping potential: negative remaining mission distance, 0 at goal."""
+        """Shaping potential: negative remaining mission distance, 0 at every
+        terminal state (goal and energy 0) so shaping stays potential-based."""
         pos = (state.r, state.c)
-        if pos == self.maze.goal:
+        if self.is_terminal(state):
             return 0.0
         unreachable = self.maze.size ** 2
         if state.has_key:
@@ -249,9 +257,9 @@ class EventLogger:
     git-ignored).
     """
 
-    FIELDS = ["episode", "step", "r", "c", "has_key", "phase",
+    FIELDS = ["episode", "step", "r", "c", "has_key", "energy",
               "intended_action", "executed_direction", "reward",
-              "next_r", "next_c", "next_has_key", "next_phase",
+              "next_r", "next_c", "next_has_key", "next_energy",
               "events", "terminated", "truncated"]
 
     def __init__(self):
@@ -263,12 +271,13 @@ class EventLogger:
         self.rows.append({
             "episode": episode, "step": info["step"],
             "r": state.r, "c": state.c, "has_key": state.has_key,
-            "phase": state.phase,
+            "energy": state.energy,
             "intended_action": info["intended_action"],
             "executed_direction": info["executed_direction"],
             "reward": reward,
             "next_r": next_state.r, "next_c": next_state.c,
-            "next_has_key": next_state.has_key, "next_phase": next_state.phase,
+            "next_has_key": next_state.has_key,
+            "next_energy": next_state.energy,
             "events": "|".join(info["events"]),
             "terminated": int(terminated), "truncated": int(truncated),
         })
@@ -292,7 +301,8 @@ def main() -> None:
     env = MazeEnv(maze, config)
     states = env.enumerate_states()
     print(f"|S| = {len(states)} states "
-          f"({maze.passable_count} cells x 2 key x {maze.gate_period} phases), "
+          f"({maze.passable_count} cells x 2 key x "
+          f"{env.energy_initial + 1} energy levels), "
           f"|A| = 4, step cap = {env.max_steps}")
 
     for state in states:
@@ -301,16 +311,19 @@ def main() -> None:
             assert env.is_terminal(state) or abs(probs - 1.0) < 1e-12
     print("transition model: probabilities sum to 1 for every (s, a)")
 
-    # the gate phase visibly changes the model: same cell, different phase
-    gr, gc = maze.gate
-    approach = State(gr, gc - 1, 1, 0)  # gate open (phase 0)
-    blocked = State(gr, gc - 1, 1, 3)   # gate closed (phase 3)
-    for s in (approach, blocked):
-        outs = env.transitions(s, RIGHT)
-        move = next((p for p, ns, *_ in outs if (ns.r, ns.c) == (gr, gc)), 0.0)
-        print(f"  from {tuple(s)} action=right: "
-              f"P(enter gate cell) = {move:.1f} (gate "
-              f"{'open' if env.gate_open(s.phase) else 'closed'})")
+    # energy visibly changes the model: same pit entry, different budget
+    pr, pc = maze.penalty_cells[0]
+    src, action = next(
+        ((pr - dr, pc - dc), a) for a, (dr, dc) in ACTION_DELTAS.items()
+        if not maze.is_wall((pr - dr, pc - dc)))
+    rich = State(src[0], src[1], 0, env.energy_initial)
+    poor = State(src[0], src[1], 0, env.penalty_drain + 1)
+    for s in (rich, poor):
+        outs = env.transitions(s, action)
+        p_death = sum(p for p, ns, _, done in outs
+                      if done and (ns.r, ns.c) != maze.goal)
+        print(f"  from {tuple(s)} action towards pit {maze.penalty_cells[0]}: "
+              f"P(death) = {p_death:.1f}")
 
     for mode in ("sparse", "shaped"):
         env = MazeEnv(maze, config, reward_mode=mode, seed=123)
@@ -326,10 +339,11 @@ def main() -> None:
             total += reward
             counts.update(info["events"])
             state = nxt
-        outcome = "goal" if terminated else "timeout"
+        outcome = ("goal" if counts[EV_GOAL] else
+                   "energy_out" if counts[EV_ENERGY_OUT] else "timeout")
         print(f"random episode [{mode:6s}]: {env.steps} steps, "
               f"return {total:8.1f}, outcome {outcome}, "
-              f"log rows {len(logger.rows)}")
+              f"energy left {state.energy}, log rows {len(logger.rows)}")
         print(f"  events: {dict(counts)}")
 
 
