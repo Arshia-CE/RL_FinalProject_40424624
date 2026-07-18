@@ -9,8 +9,12 @@ from experiments.analysis import (FIGURES_DIR, RAW_DATA_DIR, plot_convergence,
                                   write_csv)
 from experiments.common import EVAL_EPISODES, EVAL_SEED
 from experiments.maze_plots import (plot_policy_arrows,
-                                    plot_policy_phase_grid,
+                                    plot_policy_energy_grid,
                                     plot_value_heatmap)
+
+# panel budgets for the per-energy policy figure: full budget down into the
+# desperation band (e <= 14) where the policy starts detouring around pits
+ENERGY_PANEL_LEVELS = [57, 40, 30, 20, 12, 6]
 
 RAW_DIR = RAW_DATA_DIR / "vi"
 FIG_DIR = FIGURES_DIR / "vi"
@@ -22,7 +26,7 @@ def run_value_iteration(config: dict) -> None:
     env = MazeEnv(maze, config, reward_mode="sparse")
     vi_cfg = config["value_iteration"]
     ref_gamma = vi_cfg["gamma"]
-    start = State(maze.start[0], maze.start[1], 0, 0)
+    start = State(maze.start[0], maze.start[1], 0, env.energy_initial)
 
     results = {}
     for gamma in vi_cfg["gamma_sweep"]:
@@ -52,6 +56,7 @@ def run_value_iteration(config: dict) -> None:
             "v_start": round(res.V[start], 4),
             "eval_episodes": stats["episodes"],
             "success_rate": stats["success_rate"],
+            "death_rate": stats["death_rate"],
             "mean_return": round(stats["mean_return"], 2),
             "mean_steps_when_successful":
                 round(stats["mean_steps_when_successful"], 2),
@@ -70,7 +75,7 @@ def run_value_iteration(config: dict) -> None:
     plot_policy_arrows(maze, reference.policy,
                        f"Optimal policy (γ={ref_gamma:g}, sparse reward)",
                        FIG_DIR / f"vi_policy_gamma{ref_gamma:g}.png")
-    plot_policy_phase_grid(maze, reference.policy, maze.gate_open_phases,
-                           f"Optimal policy per gate phase (γ={ref_gamma:g})",
-                           FIG_DIR / f"vi_policy_by_phase_gamma{ref_gamma:g}.png")
+    plot_policy_energy_grid(maze, reference.policy, ENERGY_PANEL_LEVELS,
+                            f"Optimal policy per energy level (γ={ref_gamma:g})",
+                            FIG_DIR / f"vi_policy_by_energy_gamma{ref_gamma:g}.png")
     print(f"  wrote {RAW_DIR / 'vi_gamma_sweep.csv'} and 4 figures")

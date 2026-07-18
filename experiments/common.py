@@ -15,8 +15,8 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from environments.maze_map import DEFAULT_CONFIG_PATH
-from environments.maze import (EV_GATE_BLOCKED, EV_PENALTY, EV_WALL_HIT,
-                               MazeEnv, State)
+from environments.maze import (EV_ENERGY_OUT, EV_GOAL, EV_PENALTY,
+                               EV_WALL_HIT, MazeEnv, State)
 
 EVAL_EPISODES = 500
 EVAL_SEED = 999
@@ -50,15 +50,19 @@ def greedy_rollout(env: MazeEnv, action_fn, seed: int) -> dict:
         states.append(state)
         for event in info["events"]:
             event_steps.setdefault(event, len(states) - 1)
+    outcome = ("goal" if EV_GOAL in event_steps else
+               "energy out" if EV_ENERGY_OUT in event_steps else "timeout")
     return {"states": states, "return": total, "steps": env.steps,
-            "terminated": terminated, "event_steps": event_steps}
+            "terminated": terminated, "outcome": outcome,
+            "event_steps": event_steps}
 
 
 def evaluate_greedy(env: MazeEnv, action_fn, episodes: int,
                     seed: int) -> dict:
     """Deterministic rollouts of a policy on the sparse env."""
     env.reset(seed=seed)
-    events, returns, steps, wins = Counter(), [], [], 0
+    events, returns, steps, wins, deaths = Counter(), [], [], 0, 0
+    energy_left = []
     for _ in range(episodes):
         state = env.reset()
         total, terminated, truncated = 0.0, False, False
@@ -67,12 +71,16 @@ def evaluate_greedy(env: MazeEnv, action_fn, episodes: int,
                 action_fn(state))
             total += reward
             events.update(info["events"])
-        wins += terminated
+        died = terminated and EV_ENERGY_OUT in info["events"]
+        deaths += died
+        wins += terminated and not died
         returns.append(total)
         steps.append(env.steps)
+        energy_left.append(state.energy)
     return {"success_rate": wins / episodes,
+            "death_rate": deaths / episodes,
             "mean_return": round(sum(returns) / episodes, 2),
             "mean_steps": round(sum(steps) / episodes, 2),
+            "mean_energy_left": round(sum(energy_left) / episodes, 2),
             "penalty_entries_per_ep": round(events[EV_PENALTY] / episodes, 3),
-            "wall_hits_per_ep": round(events[EV_WALL_HIT] / episodes, 3),
-            "gate_blocked_per_ep": round(events[EV_GATE_BLOCKED] / episodes, 3)}
+            "wall_hits_per_ep": round(events[EV_WALL_HIT] / episodes, 3)}

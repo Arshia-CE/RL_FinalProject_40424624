@@ -206,7 +206,7 @@ discounted terminal rewards no longer cover accumulated step costs, to
 +119.4) while all three policies are behaviorally near-identical — value
 *scale* says nothing about policy *quality*.
 
-![VI policy by phase](results/figures/vi/vi_policy_by_phase_gamma0.95.png)
+![VI policy by energy level](results/figures/vi/vi_policy_by_energy_gamma0.95.png)
 
 This figure is the central evidence that the periodic gate genuinely shapes
 decision-making. Far from the gate the arrows are phase-invariant (an agent

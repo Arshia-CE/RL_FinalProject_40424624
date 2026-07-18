@@ -23,10 +23,10 @@
     },
 
     "energy": {
-        "initial": 100,
+        "initial": 57,
         "penalty_drain": 5,
         "death_reward": -50,
-        "comment": "every step burns 1 energy (bumps included); entering a penalty cell drains penalty_drain extra; at 0 the episode terminates as a death worth death_reward, costlier than any plausible continued struggle so giving up early is never optimal"
+        "comment": "every step burns 1 energy (bumps included); entering a penalty cell drains penalty_drain extra; at 0 the episode terminates as a death worth death_reward, costlier than any plausible continued struggle so giving up early is never optimal. initial=57 tuned in validation: optimal play succeeds 98.8% (irreducible slip deaths) and the low-energy policy detours around the pit near (12,12) below e=15; drain=8 was rejected (success fell under 97%)"
     },
 
     "rewards": {

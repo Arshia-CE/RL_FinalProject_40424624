@@ -16,17 +16,17 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from environments.maze_map import (DOOR, GATE, GOAL, KEY, PENALTY, START,
-                                   MazeMap)
+from environments.maze_map import DOOR, GOAL, KEY, PENALTY, START, MazeMap
 from environments.maze import EV_DOOR_PASS, EV_KEY_PICKUP, State
 from experiments.analysis import (ARROW, DIVERGING_CMAP, GRID_COLOR, INK,
                                   INK_2, SEQ_RAMP, SURFACE, VALUE_CMAP,
                                   WALL_COLOR, hex_to_rgb, save_figure)
 
-CELL_LETTER = {START: "S", KEY: "K", DOOR: "D", GOAL: "G", GATE: "T",
-               PENALTY: "P"}
+# the map's old gate cell ("T") is plain floor under the energy dynamics,
+# so it gets no letter or wash
+CELL_LETTER = {START: "S", KEY: "K", DOOR: "D", GOAL: "G", PENALTY: "P"}
 CELL_WASH = {START: "#2a78d6", KEY: "#eda100", DOOR: "#e87ba4",
-             GOAL: "#1baf7a", GATE: "#4a3aa7", PENALTY: "#e34948"}
+             GOAL: "#1baf7a", PENALTY: "#e34948"}
 # darker end of the sequential ramp: readable as a line on the light surface
 PATH_CMAP = LinearSegmentedColormap.from_list("path_blue", SEQ_RAMP[2:])
 
@@ -80,14 +80,16 @@ def draw_maze(ax, maze: MazeMap, wash_alpha: float = 0.35,
 
 
 def value_grid(maze: MazeMap, V: dict[State, float], has_key: int,
-               reduce_phases=max) -> np.ma.MaskedArray:
-    """V reduced over gate phases for one key status; walls masked."""
+               reduce_energy=max) -> np.ma.MaskedArray:
+    """V reduced over non-exhausted energy levels for one key status; walls
+    masked (energy 0 is terminal, its zeros would pollute the reduction)."""
+    by_cell: dict[tuple[int, int], list[float]] = {}
+    for s, v in V.items():
+        if s.has_key == has_key and s.energy > 0:
+            by_cell.setdefault((s.r, s.c), []).append(v)
     grid = np.full((maze.size, maze.size), np.nan)
-    for r in range(maze.size):
-        for c in range(maze.size):
-            if not maze.is_wall((r, c)):
-                grid[r, c] = reduce_phases(
-                    V[State(r, c, has_key, p)] for p in range(maze.gate_period))
+    for (r, c), vals in by_cell.items():
+        grid[r, c] = reduce_energy(vals)
     return np.ma.masked_invalid(grid)
 
 
@@ -103,14 +105,17 @@ def plot_value_heatmap(maze: MazeMap, V: dict[State, float], title: str,
         _cell_letters(ax, maze)
         ax.set_title("without key (k=0)" if k == 0 else "with key (k=1)")
     cbar = fig.colorbar(im, ax=axes, shrink=0.85)
-    cbar.set_label("V (max over gate phases)", color=INK_2)
+    cbar.set_label("V (max over energy levels)", color=INK_2)
     cbar.outline.set_edgecolor(GRID_COLOR)
     fig.suptitle(title, color=INK)
     save_figure(fig, path)
 
 
 def plot_policy_arrows(maze: MazeMap, policy: dict[State, int | None],
-                       title: str, path: Path, phase: int = 0) -> None:
+                       title: str, path: Path,
+                       energy: int | None = None) -> None:
+    if energy is None:
+        energy = max(s.energy for s in policy)  # the full starting budget
     fig, axes = plt.subplots(1, 2, figsize=(11, 5.6))
     for ax, k in zip(axes, (0, 1)):
         draw_maze(ax, maze)
@@ -118,38 +123,38 @@ def plot_policy_arrows(maze: MazeMap, policy: dict[State, int | None],
             for c in range(maze.size):
                 if maze.is_wall((r, c)):
                     continue
-                action = policy[State(r, c, k, phase)]
+                action = policy[State(r, c, k, energy)]
                 if action is None:
                     continue  # terminal; the G letter already marks it
                 ax.text(c, r + 0.05, ARROW[action], color=INK, fontsize=9,
                         ha="center", va="center")
         ax.set_title(f"{'without key (k=0)' if k == 0 else 'with key (k=1)'}"
-                     f", gate phase {phase}")
+                     f", energy {energy}")
     fig.suptitle(title, color=INK)
     save_figure(fig, path)
 
 
-def plot_policy_phase_grid(maze: MazeMap, policy: dict[State, int | None],
-                           gate_open_phases: list[int], title: str,
-                           path: Path, has_key: int = 1) -> None:
-    """Small multiples: the greedy policy at every gate phase (fixed key)."""
-    period = maze.gate_period
+def plot_policy_energy_grid(maze: MazeMap, policy: dict[State, int | None],
+                            energy_levels: list[int], title: str,
+                            path: Path, has_key: int = 1) -> None:
+    """Small multiples: the greedy policy at chosen energy levels (fixed
+    key); where low-budget desperation shortcuts show up."""
+    n = len(energy_levels)
     rows = 2
-    cols = (period + 1) // 2
+    cols = (n + 1) // 2
     fig, axes = plt.subplots(rows, cols, figsize=(4.6 * cols, 4.9 * rows))
-    for phase, ax in zip(range(period), axes.flat):
+    for energy, ax in zip(energy_levels, axes.flat):
         draw_maze(ax, maze, letter_size=5.0)
         for r in range(maze.size):
             for c in range(maze.size):
                 if maze.is_wall((r, c)):
                     continue
-                action = policy[State(r, c, has_key, phase)]
+                action = policy[State(r, c, has_key, energy)]
                 if action is not None:
                     ax.text(c, r + 0.05, ARROW[action], color=INK,
                             fontsize=6.5, ha="center", va="center")
-        state_txt = "open" if phase in gate_open_phases else "closed"
-        ax.set_title(f"phase {phase} — gate {state_txt}")
-    for ax in axes.flat[period:]:
+        ax.set_title(f"energy {energy}")
+    for ax in axes.flat[n:]:
         ax.axis("off")
     fig.suptitle(f"{title} (has_key={has_key})", color=INK)
     save_figure(fig, path)
@@ -158,15 +163,17 @@ def plot_policy_phase_grid(maze: MazeMap, policy: dict[State, int | None],
 def plot_visit_map(maze: MazeMap, visits: dict[State, int], title: str,
                    path: Path) -> None:
     """State-visit heatmap on log scale, split by key possession."""
+    totals: dict[tuple[int, int, int], int] = {}
+    for s, v in visits.items():
+        cell = (s.r, s.c, s.has_key)
+        totals[cell] = totals.get(cell, 0) + v
     grids = []
     for k in (0, 1):
         grid = np.full((maze.size, maze.size), np.nan)
         for r in range(maze.size):
             for c in range(maze.size):
                 if not maze.is_wall((r, c)):
-                    total = sum(visits.get(State(r, c, k, p), 0)
-                                for p in range(maze.gate_period))
-                    grid[r, c] = np.log10(total + 1)
+                    grid[r, c] = np.log10(totals.get((r, c, k), 0) + 1)
         grids.append(np.ma.masked_invalid(grid))
     vmax = max(g.max() for g in grids)
     fig, axes = plt.subplots(1, 2, figsize=(11, 5.4))
@@ -176,7 +183,7 @@ def plot_visit_map(maze: MazeMap, visits: dict[State, int], title: str,
         _cell_letters(ax, maze)
         ax.set_title("without key (k=0)" if k == 0 else "with key (k=1)")
     cbar = fig.colorbar(im, ax=axes, shrink=0.85)
-    cbar.set_label("log₁₀(visits + 1), summed over gate phases",
+    cbar.set_label("log₁₀(visits + 1), summed over energy levels",
                    color=INK_2)
     cbar.outline.set_edgecolor(GRID_COLOR)
     fig.suptitle(title, color=INK)
@@ -208,9 +215,8 @@ def plot_final_paths(maze: MazeMap, rollouts: list[tuple[str, dict]],
                                         else DOOR],
                         markersize=size, markeredgecolor="white",
                         markeredgewidth=0.8, zorder=3.5)
-        outcome = "goal" if roll["terminated"] else "timeout"
         ax.set_title(f"{label} — {roll['steps']} steps, "
-                     f"return {roll['return']:.0f} ({outcome})")
+                     f"return {roll['return']:.0f} ({roll['outcome']})")
     cbar = fig.colorbar(lc, ax=axes, shrink=0.85)
     cbar.set_label("step along the episode", color=INK_2)
     cbar.outline.set_edgecolor(GRID_COLOR)
@@ -221,9 +227,12 @@ def plot_final_paths(maze: MazeMap, rollouts: list[tuple[str, dict]],
 def plot_transfer_q_diff(maze: MazeMap, q_before: dict, q_after: dict,
                          title: str, path: Path) -> None:
     """Before/after target training on a transferred table: per-cell
-    max-action |ΔQ| (top row) and the share of gate phases keeping the
-    transferred greedy action (bottom row; phases with no data blank)."""
+    max-action |ΔQ| (top row) and the share of energy levels keeping the
+    transferred greedy action (bottom row; levels with no data blank)."""
     zeros = np.zeros(len(ARROW))
+    per_cell: dict[tuple[int, int, int], list[State]] = {}
+    for s in set(q_before) | set(q_after):
+        per_cell.setdefault((s.r, s.c, s.has_key), []).append(s)
     dq_grids, keep_grids = [], []
     for k in (0, 1):
         dq = np.full((maze.size, maze.size), np.nan)
@@ -232,9 +241,8 @@ def plot_transfer_q_diff(maze: MazeMap, q_before: dict, q_after: dict,
             for c in range(maze.size):
                 if maze.is_wall((r, c)):
                     continue
-                diffs, kept, counted = [], 0, 0
-                for p in range(maze.gate_period):
-                    s = State(r, c, k, p)
+                diffs, kept, counted = [0.0], 0, 0
+                for s in per_cell.get((r, c, k), []):
                     qb = q_before.get(s, zeros)
                     qa = q_after.get(s, zeros)
                     diffs.append(float(np.abs(qa - qb).max()))
@@ -255,7 +263,7 @@ def plot_transfer_q_diff(maze: MazeMap, q_before: dict, q_after: dict,
         _cell_letters(ax, maze)
         ax.set_title("without key (k=0)" if k == 0 else "with key (k=1)")
     cbar = fig.colorbar(im_dq, ax=axes[0], shrink=0.9)
-    cbar.set_label("max-action |ΔQ| (max over gate phases)", color=INK_2)
+    cbar.set_label("max-action |ΔQ| (max over energy levels)", color=INK_2)
     cbar.outline.set_edgecolor(GRID_COLOR)
     for ax, grid, k in zip(axes[1], keep_grids, (0, 1)):
         base = np.tile(hex_to_rgb(SURFACE), (maze.size, maze.size, 1))
@@ -269,7 +277,7 @@ def plot_transfer_q_diff(maze: MazeMap, q_before: dict, q_after: dict,
         _cell_letters(ax, maze)
         ax.set_title("without key (k=0)" if k == 0 else "with key (k=1)")
     cbar = fig.colorbar(im_keep, ax=axes[1], shrink=0.9)
-    cbar.set_label("share of gate phases keeping the transferred greedy "
+    cbar.set_label("share of energy levels keeping the transferred greedy "
                    "action", color=INK_2)
     cbar.outline.set_edgecolor(GRID_COLOR)
     fig.suptitle(title, color=INK)
@@ -279,11 +287,15 @@ def plot_transfer_q_diff(maze: MazeMap, q_before: dict, q_after: dict,
 def plot_disagreement_map(maze: MazeMap, agent_policy: dict,
                           agent_defined: set, vi_policy: dict, title: str,
                           path: Path) -> None:
-    """Per-cell share of gate phases whose greedy action matches VI.
+    """Per-cell share of energy levels whose greedy action matches VI.
 
-    Blue = agrees in all phases, red = disagrees in all; cells the agent
-    never visited stay surface-colored.
+    Blue = agrees at every level, red = disagrees at every level; cells the
+    agent never visited stay surface-colored.
     """
+    per_cell: dict[tuple[int, int, int], list[State]] = {}
+    for s in agent_defined:
+        if vi_policy.get(s) is not None:
+            per_cell.setdefault((s.r, s.c, s.has_key), []).append(s)
     fig, axes = plt.subplots(1, 2, figsize=(11, 5.6))
     for ax, k in zip(axes, (0, 1)):
         base = np.tile(hex_to_rgb(SURFACE), (maze.size, maze.size, 1))
@@ -293,9 +305,7 @@ def plot_disagreement_map(maze: MazeMap, agent_policy: dict,
                 if maze.is_wall((r, c)):
                     base[r, c] = hex_to_rgb(WALL_COLOR)
                     continue
-                defined = [State(r, c, k, p) for p in range(maze.gate_period)
-                           if State(r, c, k, p) in agent_defined
-                           and vi_policy.get(State(r, c, k, p)) is not None]
+                defined = per_cell.get((r, c, k))
                 if defined:
                     frac[r, c] = (sum(agent_policy[s] == vi_policy[s]
                                       for s in defined) / len(defined))
@@ -306,7 +316,7 @@ def plot_disagreement_map(maze: MazeMap, agent_policy: dict,
         _cell_letters(ax, maze)
         ax.set_title("without key (k=0)" if k == 0 else "with key (k=1)")
     cbar = fig.colorbar(im, ax=axes, shrink=0.85)
-    cbar.set_label("share of gate phases agreeing with VI", color=INK_2)
+    cbar.set_label("share of energy levels agreeing with VI", color=INK_2)
     cbar.outline.set_edgecolor(GRID_COLOR)
     fig.suptitle(f"{title} — unvisited cells left blank", color=INK)
     save_figure(fig, path)

@@ -22,7 +22,8 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from environments.maze_map import DEFAULT_CONFIG_PATH, MAPS_DIR, MazeMap
-from environments.maze import ACTION_NAMES, ACTIONS, MazeEnv, State
+from environments.maze import (ACTION_DELTAS, ACTION_NAMES, ACTIONS,
+                               EV_ENERGY_OUT, MazeEnv, State)
 
 MODELS_DIR = PROJECT_ROOT / "results" / "models"
 
@@ -163,18 +164,21 @@ def greedy_rollouts(env: MazeEnv, policy: dict[State, int | None],
                     episodes: int, seed: int) -> dict:
     """Run the greedy policy on the stochastic env; summary statistics."""
     env.reset(seed=seed)
-    wins, returns, win_steps = 0, [], []
+    wins, deaths, returns, win_steps = 0, 0, [], []
     for _ in range(episodes):
         state = env.reset()
         total, terminated, truncated = 0.0, False, False
         while not (terminated or truncated):
-            state, reward, terminated, truncated, _ = env.step(policy[state])
+            state, reward, terminated, truncated, info = env.step(policy[state])
             total += reward
-        wins += terminated
+        died = terminated and EV_ENERGY_OUT in info["events"]
+        deaths += died
+        wins += terminated and not died
         returns.append(total)
-        if terminated:
+        if terminated and not died:
             win_steps.append(env.steps)
     return {"episodes": episodes, "success_rate": wins / episodes,
+            "death_rate": deaths / episodes,
             "mean_return": sum(returns) / episodes,
             "mean_steps_when_successful":
                 sum(win_steps) / len(win_steps) if win_steps else None}
@@ -194,7 +198,7 @@ def main() -> None:
           f" after {result.iterations} sweeps in {result.runtime_seconds:.2f}s"
           f" (final delta {result.deltas[-1]:.2e}, threshold {result.threshold:g})")
 
-    start_state = State(maze.start[0], maze.start[1], 0, 0)
+    start_state = State(maze.start[0], maze.start[1], 0, env.energy_initial)
     print(f"V(start) = {result.V[start_state]:.2f}")
 
     out = MODELS_DIR / "vi" / f"vi_sparse_gamma{result.gamma:g}.json"
@@ -202,22 +206,29 @@ def main() -> None:
     assert VIResult.load(out).V == result.V
     print(f"saved reference model to {out.relative_to(PROJECT_ROOT)}")
 
-    # the optimal action in front of the gate should depend on the phase
-    gr, gc = maze.gate
-    wait_cell = next((gr + dr, gc + dc) for dr, dc in
-                     ((-1, 0), (1, 0), (0, -1), (0, 1))
-                     if not maze.is_wall((gr + dr, gc + dc))
-                     and (gr + dr, gc + dc) != tuple(maze.door))
-    print(f"policy at {wait_cell} (holding the key), by gate phase:")
-    for phase in range(maze.gate_period):
-        s = State(wait_cell[0], wait_cell[1], 1, phase)
-        gate = "open " if env.gate_open(phase) else "closed"
-        print(f"  phase {phase} (gate {gate}): {ACTION_NAMES[result.policy[s]]}"
-              f"   V={result.V[s]:.2f}")
+    # the optimal action near a pit depends on the remaining budget: find a
+    # pit-adjacent cell whose greedy action changes across energy levels
+    energies = (env.energy_initial, 40, 30, 20, 12, 6)
+    probe = next(((cell, k, tuple(pit))
+                  for pit in maze.penalty_cells
+                  for dr, dc in ACTION_DELTAS.values()
+                  for cell in [(pit[0] + dr, pit[1] + dc)]
+                  if not maze.is_wall(cell) and cell != tuple(maze.goal)
+                  for k in (0, 1)
+                  if len({result.policy[State(cell[0], cell[1], k, e)]
+                          for e in energies}) > 1), None)
+    if probe:
+        (cr, cc), k, pit = probe
+        print(f"policy at {(cr, cc)} (k={k}, pit at {pit}), by energy:")
+        for e in energies:
+            s = State(cr, cc, k, e)
+            print(f"  energy {e:3d}: {ACTION_NAMES[result.policy[s]]}"
+                  f"   V={result.V[s]:.2f}")
 
     stats = greedy_rollouts(MazeEnv(maze, config, reward_mode="sparse"),
                             result.policy, episodes=500, seed=999)
     print(f"greedy policy on stochastic env: success {stats['success_rate']:.1%}, "
+          f"death rate {stats['death_rate']:.1%}, "
           f"mean return {stats['mean_return']:.1f}, "
           f"mean steps (successes) {stats['mean_steps_when_successful']:.1f}")
 

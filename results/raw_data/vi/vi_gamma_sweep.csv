@@ -1,4 +1,4 @@
-gamma,iterations,runtime_seconds,converged,v_start,eval_episodes,success_rate,mean_return,mean_steps_when_successful,policy_agreement_vs_ref,ref_gamma
-0.9,80,0.0288,True,-9.7907,500,1.0,191.51,43.34,0.9792,0.95
-0.95,91,0.0203,True,9.5987,500,1.0,191.61,43.44,1.0,0.95
-0.99,102,0.0221,True,119.4276,500,1.0,191.99,43.57,0.9659,0.95
+gamma,iterations,runtime_seconds,converged,v_start,eval_episodes,success_rate,death_rate,mean_return,mean_steps_when_successful,policy_agreement_vs_ref,ref_gamma
+0.9,58,0.5721,True,-9.395,500,0.988,0.012,191.25,41.81,0.9761,0.95
+0.95,58,0.6103,True,11.3791,500,0.988,0.012,191.28,41.81,1.0,0.95
+0.99,58,0.5295,True,120.8878,500,0.99,0.01,191.9,41.92,0.96,0.95
