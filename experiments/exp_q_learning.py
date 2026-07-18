@@ -42,8 +42,9 @@ def run_q_learning(config: dict) -> None:
                                             qcfg["epsilon_end"],
                                             qcfg["epsilon_decay_episodes"])
                 is_canonical = seed == seeds[0]
+                # trace the run that actually learns: shaped/exponential
                 trace_eps = (frozenset({qcfg["trace_episode"]})
-                             if is_canonical and mode == "sparse"
+                             if is_canonical and mode == "shaped"
                              and schedule_name == "exponential"
                              else frozenset())
                 history, trace = agent.train(episodes, schedule,
@@ -113,8 +114,8 @@ def run_q_learning(config: dict) -> None:
          ("steps", "steps per episode")],
         "sparse vs shaped reward, exponential decay",
         FIG_DIR / "q_learning_reward_shaping.png")
-    plot_visit_map(maze, canonical[("sparse", "exponential")].visits,
-                   "State visits during training (sparse, exponential decay)",
+    plot_visit_map(maze, canonical[("shaped", "exponential")].visits,
+                   "State visits during training (shaped, exponential decay)",
                    FIG_DIR / "q_learning_visit_map.png")
 
     # did shaping change the final policy? compare on jointly-visited states

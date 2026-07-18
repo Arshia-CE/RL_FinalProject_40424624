@@ -143,7 +143,7 @@ def plot_sarsa_trace(step_trace: list[dict], trace_dump: list[dict],
     # a log axis confirm the (gamma*lambda)^t geometric decay
     pairs: list[tuple] = []
     for row in step_trace:
-        key = (row["r"], row["c"], row["has_key"], row["phase"],
+        key = (row["r"], row["c"], row["has_key"], row["energy"],
                row["action"])
         if key not in pairs:
             pairs.append(key)
@@ -151,11 +151,11 @@ def plot_sarsa_trace(step_trace: list[dict], trace_dump: list[dict],
             break
     for key, color in zip(pairs, CATEGORICAL):
         series = [(row["step"], row["E"]) for row in trace_dump
-                  if (row["r"], row["c"], row["has_key"], row["phase"],
+                  if (row["r"], row["c"], row["has_key"], row["energy"],
                       row["action"]) == key]
         ax2.semilogy([s for s, _ in series], [e for _, e in series],
                      color=color, linewidth=2,
-                     label=f"s=({key[0]},{key[1]}) p={key[3]} "
+                     label=f"s=({key[0]},{key[1]}) e={key[3]} "
                            f"a={ARROW[key[4]]}")
     ax2.set_xlabel("step")
     ax2.set_ylabel("eligibility E (log scale)")

@@ -1,4 +1,7 @@
-"""Three-algorithm comparison on the same map and sparse reward."""
+"""Three-algorithm comparison on the same map; all evaluation on the sparse
+env. The canonical Q-Learning agent trains on the shaped reward (sparse
+one-step learning never ignites under the energy budget); SARSA(lambda)
+trains sparse — its traces are what make that possible."""
 
 from __future__ import annotations
 
@@ -39,7 +42,7 @@ def run_comparison(config: dict) -> None:
     vi_time = time.perf_counter() - t0  # includes model construction
 
     t0 = time.perf_counter()
-    ql = QLearningAgent(MazeEnv(maze, config, reward_mode="sparse", seed=seed),
+    ql = QLearningAgent(MazeEnv(maze, config, reward_mode="shaped", seed=seed),
                         qcfg["alpha"], qcfg["gamma"], seed=seed)
     ql_hist, _ = ql.train(qcfg["episodes"],
                           epsilon_schedule("exponential",
@@ -68,7 +71,8 @@ def run_comparison(config: dict) -> None:
     v_pi = {"value_iteration": vi_res.V,
             "q_learning": vi.evaluate_policy(ql.greedy_policy()),
             "sarsa_lambda": vi.evaluate_policy(sarsa.greedy_policy())}
-    start = State(maze.start[0], maze.start[1], 0, 0)
+    start = State(maze.start[0], maze.start[1], 0,
+                  config["energy"]["initial"])
 
     penalty_adjacent = {(p[0] + dr, p[1] + dc) for p in maze.penalty_cells
                         for dr, dc in ((-1, 0), (1, 0), (0, -1), (0, 1), (0, 0))}
@@ -132,7 +136,7 @@ def run_comparison(config: dict) -> None:
     model_files = {
         "value_iteration": MODELS_DIR / "vi" / f"vi_sparse_gamma{gamma:g}.json",
         "q_learning": MODELS_DIR / "q_learning"
-                      / "q_learning_sparse_exponential.json",
+                      / "q_learning_shaped_exponential.json",
         "sarsa_lambda": MODELS_DIR / "sarsa"
                         / f"sarsa_lambda{BEST_LAMBDA:g}_sparse.json",
     }
@@ -154,8 +158,9 @@ def run_comparison(config: dict) -> None:
              lambda gaps: max((g for g in gaps if g[0] < 0.05),
                               key=lambda g: visit_counts["q_learning"]
                               .get(g[1], 0), default=None)),
-            ("large_gap", "q_learning",
-             lambda gaps: max(gaps, key=lambda g: g[0], default=None))):
+            ("low_energy", "q_learning",
+             lambda gaps: max((g for g in gaps if g[1].energy <= 15),
+                              key=lambda g: g[0], default=None))):
         found = pick(gap_records[source])
         if found is None:
             continue
@@ -165,7 +170,7 @@ def run_comparison(config: dict) -> None:
         agent_policy = agent.greedy_policy()
         samples.append({
             "label": label, "algorithm": source,
-            "r": s.r, "c": s.c, "has_key": s.has_key, "phase": s.phase,
+            "r": s.r, "c": s.c, "has_key": s.has_key, "energy": s.energy,
             "visits": visit_counts[source].get(s, 0),
             "vi_action": vi_res.policy[s], "agent_action": agent_policy[s],
             "q_star_vi_action": round(float(q_star[i, vi_res.policy[s]]), 3),
@@ -174,7 +179,7 @@ def run_comparison(config: dict) -> None:
             "agent_q_values": " ".join(f"{v:.2f}" for v in agent.Q[s]),
         })
         print(f"  sample [{label}] {source}: s=({s.r},{s.c},k={s.has_key},"
-              f"p={s.phase}) visits={samples[-1]['visits']} "
+              f"e={s.energy}) visits={samples[-1]['visits']} "
               f"VI={samples[-1]['vi_action']} agent="
               f"{samples[-1]['agent_action']} gap={gap:.3f}")
     write_csv(samples, RAW_DIR / "comparison_sample_states.csv")
@@ -189,16 +194,17 @@ def run_comparison(config: dict) -> None:
                           f"Value Iteration",
                           FIG_DIR / "comparison_disagreement_sarsa.png")
     plot_training_curves(
-        {"Q-Learning": [ql_hist], f"SARSA(λ={BEST_LAMBDA:g})": [sarsa_hist]},
+        {"Q-Learning (shaped)": [ql_hist],
+         f"SARSA(λ={BEST_LAMBDA:g}, sparse)": [sarsa_hist]},
         [("success", "success rate"), ("return", "episode return"),
          ("steps", "steps per episode")],
-        "Model-free methods, sparse reward, exponential decay",
+        "Model-free methods, exponential decay",
         FIG_DIR / "comparison_learning_curves.png")
     rollouts = [(label, greedy_rollout(MazeEnv(maze, config,
                                                reward_mode="sparse"),
                                        agents[name][0], EVAL_SEED))
                 for name, label in (("value_iteration", "Value Iteration"),
-                                    ("q_learning", "Q-Learning"),
+                                    ("q_learning", "Q-Learning (shaped)"),
                                     ("sarsa_lambda",
                                      f"SARSA(λ={BEST_LAMBDA:g})"))]
     plot_final_paths(maze, rollouts,

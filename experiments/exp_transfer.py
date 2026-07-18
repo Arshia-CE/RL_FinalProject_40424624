@@ -48,8 +48,9 @@ def _train_with_snapshots(agent: QLearningAgent, episodes: int, schedule,
 def run_transfer(config: dict) -> None:
     tcfg = config["transfer"]
     source_maze = MazeMap.load(MAPS_DIR / "source.json")
+    # the shaped table is the canonical source: the sparse one never learns
     source_q, _ = QLearningAgent.load_table(
-        MODELS_DIR / "q_learning" / "q_learning_sparse_exponential.json")
+        MODELS_DIR / "q_learning" / "q_learning_shaped_exponential.json")
     schedule = epsilon_schedule(tcfg["epsilon_decay_schedule"],
                                 tcfg["epsilon_start"], tcfg["epsilon_end"],
                                 tcfg["epsilon_decay_episodes"])
@@ -114,8 +115,9 @@ def run_transfer(config: dict) -> None:
                 table_policy(init_q), tcfg["jumpstart_episodes"], EVAL_SEED)
             per_seed = []
             for seed in seeds:
+                # shaped training (sparse never ignites); evals stay sparse
                 agent = QLearningAgent(
-                    MazeEnv(target, config, reward_mode="sparse", seed=seed),
+                    MazeEnv(target, config, reward_mode="shaped", seed=seed),
                     tcfg["alpha"], tcfg["gamma"], seed=seed)
                 agent.Q = {s: q.copy() for s, q in init_q.items()}
                 if (kind == "different" and name == "full"

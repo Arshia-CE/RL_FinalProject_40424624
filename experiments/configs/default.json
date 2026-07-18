@@ -23,10 +23,10 @@
     },
 
     "energy": {
-        "initial": 57,
+        "initial": 100,
         "penalty_drain": 5,
         "death_reward": -50,
-        "comment": "every step burns 1 energy (bumps included); entering a penalty cell drains penalty_drain extra; at 0 the episode terminates as a death worth death_reward, costlier than any plausible continued struggle so giving up early is never optimal. initial=57 tuned in validation: optimal play succeeds 98.8% (irreducible slip deaths) and the low-energy policy detours around the pit near (12,12) below e=15; drain=8 was rejected (success fell under 97%)"
+        "comment": "every step burns 1 energy (bumps included); entering a penalty cell drains penalty_drain extra; at 0 the episode terminates as a death worth death_reward, costlier than any plausible continued struggle so giving up early is never optimal. initial=100 set by a learnability study: at the knife-edge budget 57 (optimal success 98.8%) tabular learners cap out near 84% eval success even with 80k episodes because every extra step converts to deaths, and sparse learners never ignite; at 100 shaped Q-Learning reaches 100% and sparse SARSA(0.7) 99% eval success. The low-energy policy structure (pit detours below e=15) is independent of the starting budget and remains in the analysis"
     },
 
     "rewards": {
@@ -58,28 +58,29 @@
     "q_learning": {
         "alpha": 0.1,
         "gamma": 0.95,
-        "episodes": 5000,
+        "episodes": 15000,
         "epsilon_start": 1.0,
         "epsilon_end": 0.05,
-        "epsilon_decay_episodes": 4000,
+        "epsilon_decay_episodes": 12000,
         "epsilon_decay_schedules": ["linear", "exponential"],
         "seeds": [7, 21, 42],
-        "trace_episode": 2500
+        "trace_episode": 7500,
+        "comment": "budgets x3 vs the gate design: the state space is ~17x larger (47066 states) and death caps episodes at ~100 steps, so each early episode yields far fewer samples than a 699-step timeout episode did. Sparse one-step Q-Learning never learns this task (documented in the report); the canonical agent is shaped/exponential"
     },
 
     "sarsa_lambda": {
         "alpha": 0.1,
         "gamma": 0.95,
-        "episodes": 5000,
+        "episodes": 15000,
         "epsilon_start": 1.0,
         "epsilon_end": 0.05,
         "epsilon_decay_schedule": "exponential",
-        "epsilon_decay_episodes": 4000,
+        "epsilon_decay_episodes": 12000,
         "trace_type": "replacing",
         "trace_prune": 1e-4,
         "lambda_sweep": [0.0, 0.3, 0.7, 0.9],
         "seeds": [7, 21, 42],
-        "trace_episode": 4900
+        "trace_episode": 14900
     },
 
     "transfer": {
@@ -94,16 +95,16 @@
             "extra_penalty_cells": 3
         },
         "beta_values": [0.25, 0.5, 0.75],
-        "episodes": 5000,
+        "episodes": 15000,
         "alpha": 0.1,
         "gamma": 0.95,
         "epsilon_start": 0.3,
         "epsilon_end": 0.05,
-        "epsilon_decay_episodes": 2000,
+        "epsilon_decay_episodes": 6000,
         "epsilon_decay_schedule": "exponential",
         "seeds": [7, 21, 42],
         "jumpstart_episodes": 200,
-        "negative_case_checkpoints": [0, 100, 500, 1000, 2500, 5000],
-        "comment": "epsilon starts at 0.3 for ALL scenarios (incl. scratch): zero-init Q with random tie-breaking explores like epsilon=1 anyway, and a low epsilon keeps the jumpstart advantage of transferred tables visible during training"
+        "negative_case_checkpoints": [0, 300, 1500, 3000, 7500, 15000],
+        "comment": "epsilon starts at 0.3 for ALL scenarios (incl. scratch): zero-init Q with random tie-breaking explores like epsilon=1 anyway, and a low epsilon keeps the jumpstart advantage of transferred tables visible during training. Training uses the shaped reward (sparse is unlearnable from scratch under the energy budget); the source table is the shaped Q-Learning table and every evaluation runs on the sparse env"
     }
 }
