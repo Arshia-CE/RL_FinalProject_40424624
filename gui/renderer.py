@@ -1,5 +1,5 @@
 """MazeMario game board: pixel-tile rendering of a MazeMap plus the
-animation layer (hero tween/bump/fall, dragon den, door slide, key bob,
+animation layer (hero tween/bump/fall/death collapse, door slide, key bob,
 reward popups, sparks, hearts)."""
 
 from __future__ import annotations
@@ -14,8 +14,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from environments.maze_map import (DOOR, GATE, GOAL, KEY, PENALTY, START,
-                                   MazeMap)
+from environments.maze_map import PENALTY, START, MazeMap
 from gui import sprites, theme
 
 UP, DOWN, LEFT, RIGHT = 0, 1, 2, 3
@@ -39,8 +38,8 @@ class GameBoard(tk.Canvas):
 
     def _reset_anim(self) -> None:
         self.anim = {"move": None, "facing": DOWN, "frame": 0, "bump": None,
-                     "fall": None, "emerge": 0.0, "dodge": 0.0,
-                     "door_open": 0.0, "door_opening": False, "roar": 0.0,
+                     "fall": None, "death": None,
+                     "door_open": 0.0, "door_opening": False,
                      "win_t": 0.0, "hearts": [], "popups": [], "sparks": []}
         self._agent_cell = None
         self._key_visible = True
@@ -69,7 +68,6 @@ class GameBoard(tk.Canvas):
                 else:
                     self._draw_floor(r, c, T, maze.grid[r][c])
         self._draw_door()
-        self._draw_den()
         self._draw_princess()
         self._draw_key()
         self._draw_hero(maze.start, DOWN, 0)
@@ -160,26 +158,6 @@ class GameBoard(tk.Canvas):
                                   fill=theme.INK, outline="",
                                   tags="door_panel")
 
-    def _draw_den(self) -> None:
-        """Dragon lair on the gate cell; the dragon item slides out of it."""
-        g = self.maze.gate
-        x, y = self.cell_xy(*g)
-        s = self.px
-        cx, cy = x + s(8), y + s(11)
-        self._den = (x, cx, cy)
-        self.create_oval(cx - s(8), cy - s(4.6), cx + s(8), cy + s(4.6),
-                         fill="#2c7238", outline="")
-        self.create_oval(cx - s(6.4), cy - s(3.4), cx + s(6.4), cy + s(3.4),
-                         fill="#0a1206", outline="")
-        self._dragon_item = self.create_image(x, cy, anchor="sw", image="",
-                                              tags="dragon")
-        self.create_arc(cx - s(8), cy - s(4.6), cx + s(8), cy + s(4.6),
-                        start=180, extent=180, style="chord",
-                        fill="#3fa34d", outline="")
-        self.create_arc(cx - s(6.4), cy - s(3.4), cx + s(6.4), cy + s(3.4),
-                        start=180, extent=180, style="chord",
-                        fill="#0a1206", outline="")
-
     def _draw_princess(self) -> None:
         g = self.maze.goal
         x, y = self.cell_xy(*g)
@@ -213,7 +191,7 @@ class GameBoard(tk.Canvas):
     def new_episode(self) -> None:
         """Restore per-episode visuals: key back, door shut, hero at start."""
         an = self.anim
-        an.update({"move": None, "bump": None, "fall": None,
+        an.update({"move": None, "bump": None, "fall": None, "death": None,
                    "door_open": 0.0, "door_opening": False, "win_t": 0.0})
         self._key_visible = True
         self.itemconfigure(self._key_item, state="normal")
@@ -278,8 +256,9 @@ class GameBoard(tk.Canvas):
     def open_door(self) -> None:
         self.anim["door_opening"] = True
 
-    def roar(self) -> None:
-        self.anim["roar"] = 0.001
+    def energy_death(self) -> None:
+        """The budget ran dry: the hero collapses and flickers out."""
+        self.anim["death"] = {"t": 0.0}
 
     def celebrate(self) -> None:
         self.anim["win_t"] = 0.0001
@@ -302,9 +281,6 @@ class GameBoard(tk.Canvas):
         self.popup((from_pos[0] + dr * 0.5, from_pos[1] + dc * 0.5), text,
                    color)
 
-    def set_gate_open(self, is_open: bool) -> None:
-        self._gate_target = 0.0 if is_open else 1.0
-
     # per-frame animation tick
 
     def tick(self, dt: float) -> None:
@@ -325,20 +301,8 @@ class GameBoard(tk.Canvas):
             an["fall"]["t"] += dt
             if an["fall"]["t"] > 0.9:
                 an["fall"] = None
-        if an["roar"]:
-            an["roar"] += dt
-            if an["roar"] > 0.5:
-                an["roar"] = 0.0
-        target = getattr(self, "_gate_target", 0.0)
-        speed = dt * 4.5
-        an["emerge"] += max(-speed, min(speed, target - an["emerge"]))
-        # entry-only barrier: with the hero standing on the gate cell, the
-        # dragon slides aside toward the approach so both stay visible
-        on_gate = (self._agent_cell is not None
-                   and tuple(self._agent_cell) == tuple(self.maze.gate))
-        an["dodge"] += max(-speed, min(speed,
-                                       (1.0 if on_gate else 0.0)
-                                       - an["dodge"]))
+        if an["death"] and an["death"]["t"] < 1.2:
+            an["death"]["t"] += dt  # dict stays: the hero remains down
         if an["door_opening"] and an["door_open"] < 1:
             an["door_open"] = min(1.0, an["door_open"] + dt * 3)
             self._paint_door_panel()
@@ -416,21 +380,7 @@ class GameBoard(tk.Canvas):
         else:
             bob = math.sin(self.time * 2.5) * 1.5 * self.scale
         self.coords(self._princess_item, gx, gy + bob)
-        # dragon emerges from / sinks into the den
-        x, cx, cy = self._den
-        visible = max(0, min(len(sprites.DRAGON),
-                             round(len(sprites.DRAGON) * an["emerge"])))
-        if visible == 0:
-            self.itemconfigure(self._dragon_item, state="hidden")
-        else:
-            shake = (math.sin(an["roar"] * 12) * 1.5 * self.scale
-                     if an["roar"] else 0)
-            self.itemconfigure(
-                self._dragon_item, state="normal",
-                image=sprites.crop_top(sprites.DRAGON, self.scale, visible))
-            self.coords(self._dragon_item,
-                        x + shake - self.px(8) * an["dodge"], cy)
-        # hero position (tween / bump / fall)
+        # hero position (tween / bump / fall / death collapse)
         r, c = self._agent_cell
         hop = 0.0
         if an["move"]:
@@ -449,6 +399,11 @@ class GameBoard(tk.Canvas):
             f = min(1.0, an["fall"]["t"] / 0.9)
             sink = (f * 2 if f < 0.5 else (1 - f) * 2) * 10 * self.scale
             hidden = int(an["fall"]["t"] * 12) % 2 == 0
+        if an["death"]:
+            f = min(1.0, an["death"]["t"] / 1.1)
+            sink += f * 10 * self.scale  # collapse into the floor
+            hidden = (f >= 1.0  # flicker faster as the lights go out
+                      or int(an["death"]["t"] * (6 + 14 * f)) % 2 == 0)
         name, flip = FACING[an["facing"]]
         self.itemconfigure(
             self._hero_item,

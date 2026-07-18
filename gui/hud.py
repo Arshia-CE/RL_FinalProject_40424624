@@ -5,7 +5,7 @@ from __future__ import annotations
 
 import tkinter as tk
 
-from gui import theme
+from gui import sprites, theme
 from gui.controller import BRAINS, MODES, WORLDS
 
 
@@ -45,7 +45,7 @@ class HudBar:
         self.score = self._stat(holder, "SCORE")
         self.steps = self._stat(holder, "STEPS")
         self.key = self._stat(holder, "KEY")
-        self.dragon = self._stat(holder, "DRAGON")
+        self._energy_stat(holder)
         self.episode = self._stat(holder, "EP")
         self.epsilon = self._stat(holder, "ε")
         self.win = self._stat(holder, "WIN")
@@ -62,7 +62,37 @@ class HudBar:
         value.pack()
         return value
 
-    def update(self, score, steps_text, has_key, gate_open, countdown,
+    BAR_W, BAR_H = 64, 12
+
+    def _energy_stat(self, parent) -> None:
+        column = tk.Frame(parent, bg=theme.HUD_BG)
+        column.pack(side="left", padx=10)
+        tk.Label(column, text="ENERGY", font=theme.pixel_font(6),
+                 bg=theme.HUD_BG, fg=theme.LABEL).pack()
+        row = tk.Frame(column, bg=theme.HUD_BG)
+        row.pack()
+        tk.Label(row, image=sprites.build(sprites.BOLT, 2),
+                 bg=theme.HUD_BG).pack(side="left", padx=(0, 3))
+        self.energy_bar = tk.Canvas(row, width=self.BAR_W, height=self.BAR_H,
+                                    bg=theme.HUD_BORDER, highlightthickness=0)
+        self.energy_bar.pack(side="left", pady=2)
+        self.energy_text = tk.Label(row, text="0", font=theme.pixel_font(9),
+                                    bg=theme.HUD_BG, fg=theme.WHITE)
+        self.energy_text.pack(side="left", padx=(4, 0))
+
+    def _paint_energy(self, energy: int, energy_max: int) -> None:
+        frac = energy / energy_max if energy_max else 0.0
+        color = (theme.ENERGY_HIGH if frac > 0.5
+                 else theme.ENERGY_MID if frac > 0.2 else theme.ENERGY_LOW)
+        self.energy_bar.delete("all")
+        if energy > 0:
+            self.energy_bar.create_rectangle(
+                0, 0, max(2, round(self.BAR_W * frac)), self.BAR_H,
+                fill=color, outline="")
+        self.energy_text.config(text=str(energy),
+                                fg=color if energy else theme.ENERGY_LOW)
+
+    def update(self, score, steps_text, has_key, energy, energy_max,
                episode, epsilon, win_rate, trained_done=False):
         self.score.config(text=str(score))
         self.steps.config(text=steps_text)
@@ -70,10 +100,7 @@ class HudBar:
             self.key.config(text="GOT!", fg=theme.GOLD)
         else:
             self.key.config(text="---", fg=theme.DISABLED)
-        if gate_open:
-            self.dragon.config(text=f"IN·{countdown}", fg=theme.GREEN)
-        else:
-            self.dragon.config(text=f"OUT·{countdown}", fg=theme.POP_BAD)
+        self._paint_energy(energy, energy_max)
         self.episode.config(text=str(episode))
         if trained_done:
             self.epsilon.config(text="DONE", fg=theme.GREEN)
@@ -129,7 +156,7 @@ class ControlBar:
 
 
 class BoardOverlay:
-    """COURSE CLEAR / TIME UP screens shown over the board."""
+    """COURSE CLEAR / OUT OF ENERGY / TIME UP screens shown over the board."""
 
     def __init__(self, board):
         self.board = board
@@ -138,22 +165,26 @@ class BoardOverlay:
 
     def show(self, kind: str, score: int, steps: int) -> None:
         self.hide()
-        bg = (theme.BOARD_OVERLAY if kind == "clear"
-              else theme.TIMEOUT_OVERLAY)
+        text = {"clear": "COURSE CLEAR!", "energy_out": "OUT OF ENERGY!",
+                "timeout": "TIME UP!"}[kind]
+        bg = {"clear": theme.BOARD_OVERLAY,
+              "energy_out": theme.ENERGY_OVERLAY,
+              "timeout": theme.TIMEOUT_OVERLAY}[kind]
+        color = {"clear": theme.GOLD, "energy_out": theme.POP_ENERGY,
+                 "timeout": theme.POP_BAD}[kind]
         self.frame = tk.Frame(self.board.master, bg=bg)
         self.frame.place(in_=self.board, x=0, y=0, relwidth=1, relheight=1)
         title = tk.Canvas(self.frame, bg=bg, highlightthickness=0,
                           width=520, height=64)
-        text = "COURSE CLEAR!" if kind == "clear" else "TIME UP!"
-        color = theme.GOLD if kind == "clear" else theme.POP_BAD
         font = theme.pixel_font(24)
         title.create_text(264, 36, text=text, font=font, fill=theme.INK)
         if kind == "clear":
             title.create_text(262, 34, text=text, font=font, fill=theme.RED)
         title.create_text(260, 32, text=text, font=font, fill=color)
         title.pack(pady=(90, 4))
-        sub = (f"SCORE {score} · {steps} STEPS" if kind == "clear"
-               else f"SCORE {score} · STEP CAP REACHED")
+        sub = {"clear": f"SCORE {score} · {steps} STEPS",
+               "energy_out": f"SCORE {score} · COLLAPSED AT STEP {steps}",
+               "timeout": f"SCORE {score} · STEP CAP REACHED"}[kind]
         tk.Label(self.frame, text=sub, font=theme.pixel_font(10), bg=bg,
                  fg=theme.WHITE).pack(pady=6)
         self.hint = tk.Label(self.frame, text="PRESS RESTART TO RUN AGAIN",

@@ -86,20 +86,20 @@ class MazeMarioApp:
 
     def _load_board(self) -> None:
         self.board.set_map(self.session.maze)
-        self.board.set_gate_open(self.session.gate_open())
         world = WORLDS[self.session.world]
         self.world_label.config(text=world["label"])
         maze = self.session.maze
         self.status_label.config(
             text=f"{maze.size}X{maze.size} · {maze.wall_count} WALLS · "
-                 f"{len(maze.penalty_cells)} PITS · GATE T={maze.gate_period}")
+                 f"{len(maze.penalty_cells)} PITS · "
+                 f"ENERGY {self.session.energy_max}")
         self._update_hud()
 
     def _update_hud(self) -> None:
         self.hud.update(round(self.session.score),
-                        f"{self.session.steps}/{self.session.step_cap}",
-                        self.session.has_key, self.session.gate_open(),
-                        self.session.gate_countdown(),
+                        str(self.session.steps),
+                        self.session.has_key, self.session.energy,
+                        self.session.energy_max,
                         self.session.episode_number(),
                         self.session.current_epsilon(),
                         self.session.win_rate(),
@@ -200,7 +200,6 @@ class MazeMarioApp:
             if fast_train:
                 self.session.run_batch(int(self.speed))
                 self.board.new_episode()
-                self.board.set_gate_open(self.session.gate_open())
                 self._update_hud()
                 self._policy_tick += 1
                 if self.show_policy and self._policy_tick % 6 == 0:
@@ -231,12 +230,6 @@ class MazeMarioApp:
             self.board.popup_between(prev, direction,
                                      f"{rewards['wall_hit']:+d}",
                                      theme.POP_BAD)
-        if event["gate_blocked"]:
-            self.board.bump(direction)
-            self.board.roar()
-            self.board.popup_between(prev, direction,
-                                     f"{rewards['gate_blocked']:+d}",
-                                     theme.POP_BAD)
         if event["door_locked"]:
             self.board.bump(direction)
             self.board.popup_between(prev, direction,
@@ -249,14 +242,23 @@ class MazeMarioApp:
             self.board.fall_in_pit()
             self.board.popup(nxt, f"{rewards['penalty_cell']:+d}",
                              theme.POP_PIT)
+            self.board.popup((nxt[0] + 0.9, nxt[1]),
+                             f"-{self.session.penalty_drain + 1} ENERGY",
+                             theme.POP_ENERGY)
         if event["door"]:
             self.board.open_door()
+        if event["energy_out"]:
+            self.board.energy_death()
+            self.board.popup((nxt[0] - 0.6, nxt[1]),
+                             f"{round(self.session.death_reward):+d}",
+                             theme.POP_BAD)
         if event["episode_end"]:
             # training rolls straight into the next episode
             if event["goal"]:
                 self.board.popup((nxt[0] - 1.2, nxt[1]),
                                  f"{rewards['goal']:+d}", theme.GOLD)
-            delay = 900 if event["goal"] else 250
+            delay = (900 if event["goal"]
+                     else 1100 if event["energy_out"] else 250)
             self.root.after(delay, self._next_training_episode)
         elif event["goal"]:
             # popup a cell higher so it clears the rising hearts
@@ -264,9 +266,10 @@ class MazeMarioApp:
                              f"{rewards['goal']:+d}", theme.GOLD)
             self.board.celebrate()
             self.root.after(1400, self._show_outcome)
+        elif event["outcome"] == "energy_out":
+            self.root.after(1400, self._show_outcome)
         elif event["outcome"] == "timeout":
             self.root.after(400, self._show_outcome)
-        self.board.set_gate_open(self.session.gate_open())
         if self.show_policy:
             self._refresh_policy()
         self._update_hud()
@@ -276,7 +279,6 @@ class MazeMarioApp:
             return
         self.session.begin_next_episode()
         self.board.new_episode()
-        self.board.set_gate_open(self.session.gate_open())
         self._update_hud()
 
     def _show_outcome(self) -> None:

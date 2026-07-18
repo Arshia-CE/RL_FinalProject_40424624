@@ -14,9 +14,7 @@ PAL = {
     "O": "#3a55c9", "o": "#22337f",
     "B": "#6e4116",
     "E": "#1a1a1a", "W": "#ffffff",
-    # dragon
-    "G": "#3fa34d", "g": "#2c7238", "C": "#f2e6b8", "H": "#ece2c8",
-    "R": "#e0402e", "r": "#8f1d12",
+    "R": "#e0402e",
     # princess
     "P": "#f27bb6", "p": "#c74e8c", "y": "#ffd94a",
     "L": "#dfe6f0",  # silver crown
@@ -128,37 +126,6 @@ PRINCESS = [
     ".dddddddddddddd.",
 ]
 
-# long-necked dragon rising out of the lair ellipse: horns, angry brows,
-# fanged jaw, folded wings and a plated belly — centered on the 16px cell
-DRAGON = [
-    "..H..........H..",
-    "..HH........HH..",
-    "...HGGGGGGGGH...",
-    "..GGGGGGGGGGGG..",
-    ".GGggGGGGGGggGG.",
-    ".GGWWEGGGGEWWGG.",
-    ".GGWWEGGGGEWWGG.",
-    ".GGGGGEGGEGGGGG.",
-    "..GGRRRRRRRRGG..",
-    "..GRRWRRRRWRRG..",
-    "...GRRRRRRRRG...",
-    "....GGGGGGGG....",
-    "....GCCCCCCG....",
-    ".r..GCCCCCCG..r.",
-    ".rr.GCCCCCCG.rr.",
-    ".rrrGCCCCCCGrrr.",
-    ".rr.GCCCCCCG.rr.",
-    ".r..GCCCCCCG..r.",
-    "..g.GCCCCCCG.g..",
-    "....GCCCCCCG....",
-    "..g.GCCCCCCG.g..",
-    "....GCCCCCCG....",
-    "...GGCCCCCCGG...",
-    "...GGCCCCCCGG...",
-    "..GGGCCCCCCGGG..",
-    "..GGGCCCCCCGGG..",
-]
-
 # ink-outlined so it pops against the sand floor
 KEY_SPRITE = [
     "................",
@@ -188,6 +155,18 @@ HEART = [
     "...RR...",
 ]
 
+# energy bolt for the HUD bar
+BOLT = [
+    "...YYYY.",
+    "..YYYY..",
+    ".YYYY...",
+    "YYYYWYY.",
+    "...YYY..",
+    "..YYY...",
+    ".YYY....",
+    ".YY.....",
+]
+
 _cache: dict = {}
 
 
@@ -214,20 +193,5 @@ def build(rows: list[str], scale: int, flip: bool = False) -> tk.PhotoImage:
             img.put(PAL[ch], to=(c * scale, r * scale,
                                  run * scale, (r + 1) * scale))
             c = run
-    _cache[key] = img
-    return img
-
-
-def crop_top(rows: list[str], scale: int, visible_rows: int) -> tk.PhotoImage:
-    """The top `visible_rows` rows of a sprite (for the emerging dragon)."""
-    key = (id(rows), scale, "crop", visible_rows)
-    if key in _cache:
-        return _cache[key]
-    full = build(rows, scale)
-    width = max(len(r) for r in rows)
-    img = tk.PhotoImage(width=width * scale,
-                        height=max(1, visible_rows * scale))
-    img.tk.call(img, "copy", full, "-from", 0, 0, width * scale,
-                max(1, visible_rows * scale))
     _cache[key] = img
     return img

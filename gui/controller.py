@@ -17,7 +17,7 @@ from agents.q_learning import QLearningAgent, epsilon_schedule
 from agents.sarsa_lambda import SarsaLambdaAgent
 from agents.value_iteration import MODELS_DIR, ValueIteration
 from environments.maze_map import MAPS_DIR, MazeMap
-from environments.maze import (EV_DOOR_LOCKED, EV_DOOR_PASS, EV_GATE_BLOCKED,
+from environments.maze import (EV_DOOR_LOCKED, EV_DOOR_PASS, EV_ENERGY_OUT,
                                EV_GOAL, EV_KEY_PICKUP, EV_PENALTY,
                                EV_WALL_HIT, MazeEnv, State)
 from experiments.common import load_config
@@ -45,7 +45,7 @@ MODES = {
 
 MODEL_FILES = {
     "q_learning": MODELS_DIR / "q_learning"
-                  / "q_learning_sparse_exponential.json",
+                  / "q_learning_shaped_exponential.json",
     "sarsa": MODELS_DIR / "sarsa" / "sarsa_lambda0.7_sparse.json",
 }
 
@@ -102,8 +102,10 @@ class GameSession:
         else:
             acfg = self.config["q_learning" if self.brain == "q_learning"
                                else "sarsa_lambda"]
-            env = MazeEnv(self.maze, self.config, reward_mode="sparse",
-                          seed=7)
+            # mirror the canonical experiment setup: shaped QL, sparse SARSA
+            env = MazeEnv(self.maze, self.config,
+                          reward_mode=("shaped" if self.brain == "q_learning"
+                                       else "sparse"), seed=7)
             if self.brain == "q_learning":
                 self.agent = QLearningAgent(env, acfg["alpha"],
                                             acfg["gamma"], seed=7)
@@ -143,8 +145,9 @@ class GameSession:
             policy = self._vi_policies[self.world]
             return lambda s: policy.get(s) if policy.get(s) is not None else 0
         if self.brain not in self._tables:
-            table, _ = QLearningAgent.load_table(MODEL_FILES[self.brain])
-            self._tables[self.brain] = table
+            path = MODEL_FILES[self.brain]
+            self._tables[self.brain] = (QLearningAgent.load_table(path)[0]
+                                        if path.exists() else {})
         table = self._tables[self.brain]
         return lambda s: (int(np.argmax(table[s]))
                           if s in table and table[s].any() else 0)
@@ -201,21 +204,21 @@ class GameSession:
                 self._pending_action = next_action
         self.state = nxt
         self.score += reward
+        events = info["events"]
         if terminated:
-            self.outcome = "clear"
+            self.outcome = "clear" if EV_GOAL in events else "energy_out"
         elif truncated:
             self.outcome = "timeout"
         if self.outcome:
-            self.recent.append(int(terminated))
+            self.recent.append(int(EV_GOAL in events))
             if learning:
                 self.trained_episodes += 1
-        events = info["events"]
         return {
             "prev": prev, "next": nxt, "reward": reward,
             "direction": info["executed_direction"],
             "moved": (nxt.r, nxt.c) != (prev.r, prev.c),
             "wall": EV_WALL_HIT in events,
-            "gate_blocked": EV_GATE_BLOCKED in events,
+            "energy_out": EV_ENERGY_OUT in events,
             "door_locked": EV_DOOR_LOCKED in events,
             "key": EV_KEY_PICKUP in events,
             "door": EV_DOOR_PASS in events,
@@ -260,8 +263,8 @@ class GameSession:
         return min(self.trained_episodes + 1, self.episode_budget)
 
     def policy_action(self, r: int, c: int) -> int | None:
-        """Greedy action at (r, c) for the agent's current key/phase."""
-        s = State(r, c, self.state.has_key, self.state.phase)
+        """Greedy action at (r, c) for the agent's current key/energy."""
+        s = State(r, c, self.state.has_key, self.state.energy)
         if self.mode == "watch":
             if self.brain == "vi":
                 policy = self._vi_policies[self.world]
@@ -274,22 +277,25 @@ class GameSession:
             return None
         return int(np.argmax(q))
 
-    def gate_open(self) -> bool:
-        return self.env.gate_open(self.state.phase)
+    @property
+    def energy(self) -> int:
+        return self.state.energy
 
-    def gate_countdown(self) -> int:
-        phases = self.maze.gate_open_phases
-        if self.gate_open():
-            return len(phases) - self.state.phase
-        return self.maze.gate_period - self.state.phase
+    @property
+    def energy_max(self) -> int:
+        return self.env.energy_initial
+
+    @property
+    def penalty_drain(self) -> int:
+        return self.env.penalty_drain
+
+    @property
+    def death_reward(self) -> float:
+        return self.env.death_reward
 
     @property
     def steps(self) -> int:
         return self.env.steps
-
-    @property
-    def step_cap(self) -> int:
-        return self.env.max_steps
 
     @property
     def has_key(self) -> bool:

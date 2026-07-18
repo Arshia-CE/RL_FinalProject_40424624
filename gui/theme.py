@@ -19,9 +19,16 @@ FOOTER = "#2a4ba8"
 OVERLAY_BG = "#0d1022"
 BOARD_OVERLAY = "#1b2447"
 TIMEOUT_OVERLAY = "#2e1010"
+ENERGY_OVERLAY = "#221030"
 POP_BAD = "#ff6b5e"
 POP_PIT = "#ff3b2e"
+POP_ENERGY = "#4ac3ff"
 MENU_HOVER = "#26305c"
+
+# energy bar bands (fraction of the starting budget)
+ENERGY_HIGH = GREEN
+ENERGY_MID = GOLD
+ENERGY_LOW = POP_BAD
 
 # tile palettes (assets THEMES)
 THEMES = {
