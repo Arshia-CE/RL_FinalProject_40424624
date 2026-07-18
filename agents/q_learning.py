@@ -18,8 +18,8 @@ if str(PROJECT_ROOT) not in sys.path:
 
 from environments.maze_map import DEFAULT_CONFIG_PATH, MAPS_DIR, MazeMap
 from environments.maze import (ACTIONS, EV_DOOR_LOCKED, EV_DOOR_PASS,
-                               EV_GATE_BLOCKED, EV_KEY_PICKUP, EV_PENALTY,
-                               EV_TIMEOUT, EV_WALL_HIT, MazeEnv, State)
+                               EV_KEY_PICKUP, EV_PENALTY, EV_TIMEOUT,
+                               EV_WALL_HIT, EV_WIZARD_BLOCKED, MazeEnv, State)
 
 MODELS_DIR = PROJECT_ROOT / "results" / "models"
 
@@ -114,7 +114,7 @@ class QLearningAgent:
                 "success": int(terminated),
                 "wall_hits": events[EV_WALL_HIT],
                 "penalty_entries": events[EV_PENALTY],
-                "gate_blocked": events[EV_GATE_BLOCKED],
+                "wizard_blocked": events[EV_WIZARD_BLOCKED],
                 "locked_door_attempts": events[EV_DOOR_LOCKED],
                 "door_passes": events[EV_DOOR_PASS],
                 "key_picked": int(events[EV_KEY_PICKUP] > 0),

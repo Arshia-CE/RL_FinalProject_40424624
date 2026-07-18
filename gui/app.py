@@ -231,11 +231,11 @@ class MazeMarioApp:
             self.board.popup_between(prev, direction,
                                      f"{rewards['wall_hit']:+d}",
                                      theme.POP_BAD)
-        if event["gate_blocked"]:
+        if event["wizard_blocked"]:
             self.board.bump(direction)
             self.board.roar()
             self.board.popup_between(prev, direction,
-                                     f"{rewards['gate_blocked']:+d}",
+                                     f"{rewards['wizard_blocked']:+d}",
                                      theme.POP_BAD)
         if event["door_locked"]:
             self.board.bump(direction)

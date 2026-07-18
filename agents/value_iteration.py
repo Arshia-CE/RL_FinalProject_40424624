@@ -202,18 +202,18 @@ def main() -> None:
     assert VIResult.load(out).V == result.V
     print(f"saved reference model to {out.relative_to(PROJECT_ROOT)}")
 
-    # the optimal action in front of the gate should depend on the phase
+    # the optimal action in front of the doorway should depend on the phase
     gr, gc = maze.gate
     wait_cell = next((gr + dr, gc + dc) for dr, dc in
                      ((-1, 0), (1, 0), (0, -1), (0, 1))
                      if not maze.is_wall((gr + dr, gc + dc))
                      and (gr + dr, gc + dc) != tuple(maze.door))
-    print(f"policy at {wait_cell} (holding the key), by gate phase:")
+    print(f"policy at {wait_cell} (holding the key), by wizard phase:")
     for phase in range(maze.gate_period):
         s = State(wait_cell[0], wait_cell[1], 1, phase)
-        gate = "open " if env.gate_open(phase) else "closed"
-        print(f"  phase {phase} (gate {gate}): {ACTION_NAMES[result.policy[s]]}"
-              f"   V={result.V[s]:.2f}")
+        doorway = "free   " if env.doorway_free(phase) else "blocked"
+        print(f"  phase {phase} (doorway {doorway}): "
+              f"{ACTION_NAMES[result.policy[s]]}   V={result.V[s]:.2f}")
 
     stats = greedy_rollouts(MazeEnv(maze, config, reward_mode="sparse"),
                             result.policy, episodes=500, seed=999)

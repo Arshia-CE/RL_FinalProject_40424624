@@ -1,8 +1,10 @@
 """Dynamic maze environment modeled as an MDP.
 
-State s = (r, c, has_key, gate_phase); actions U/D/L/R with 0.8/0.1/0.1
-stochasticity. Walls, the locked door (keyless) and the closed gate block by
-keeping the agent in place; the gate phase advances every step. Rewards are
+State s = (r, c, has_key, phase); actions U/D/L/R with 0.8/0.1/0.1
+stochasticity. Walls, the locked door (keyless) and the blinking wizard's
+cell block by keeping the agent in place; the wizard occupies one cell of a
+fixed blink sequence per phase (entry checked at the departure phase, as on
+main) and the phase advances every step. Rewards are
 sparse or potential-based shaped; the goal terminates, the step cap
 truncates. transitions() exposes the exact model for Value Iteration, built
 from the same resolution code that step() samples from.
@@ -32,14 +34,14 @@ ACTION_DELTAS = {UP: (-1, 0), DOWN: (1, 0), LEFT: (0, -1), RIGHT: (0, 1)}
 PERPENDICULAR = {UP: (LEFT, RIGHT), DOWN: (LEFT, RIGHT),
                  LEFT: (UP, DOWN), RIGHT: (UP, DOWN)}
 
-# events (the spec's minimum loggable set, plus gate_blocked for our feature)
+# events (the spec's minimum loggable set, plus wizard_blocked for our feature)
 EV_MOVE = "move"
 EV_WALL_HIT = "wall_hit"
 EV_PENALTY = "penalty_cell"
 EV_KEY_PICKUP = "key_pickup"
 EV_DOOR_LOCKED = "locked_door_attempt"
 EV_DOOR_PASS = "door_pass"
-EV_GATE_BLOCKED = "gate_blocked"
+EV_WIZARD_BLOCKED = "wizard_blocked"
 EV_GOAL = "goal_reached"
 EV_TIMEOUT = "timeout"
 
@@ -50,7 +52,7 @@ EVENT_REWARD_KEY = {
     EV_KEY_PICKUP: "key_pickup",
     EV_DOOR_LOCKED: "locked_door_attempt",
     EV_DOOR_PASS: "door_pass",
-    EV_GATE_BLOCKED: "gate_blocked",
+    EV_WIZARD_BLOCKED: "wizard_blocked",
     EV_GOAL: "goal",
 }
 
@@ -96,6 +98,14 @@ class MazeEnv:
         self.p_perpendicular = config["transition"]["p_perpendicular"]
         self.max_steps = int(config["episode"]["step_cap_multiplier"]
                              * maze.passable_count)
+        seq = config["wizard"]["blink_sequence"]
+        if len(seq) != maze.gate_period:
+            raise ValueError(f"wizard blink_sequence has {len(seq)} entries, "
+                             f"expected gate_period={maze.gate_period}")
+        self.wizard_sequence = [tuple(cell) for cell in seq]
+        in_walls = [cell for cell in self.wizard_sequence if maze.is_wall(cell)]
+        if in_walls:
+            raise ValueError(f"wizard blink cells inside walls: {in_walls}")
         # distance maps for the shaping potential (and later analysis)
         self.dist_to_key = _bfs_distances(maze, maze.key, door_open=False)
         self.dist_to_goal = _bfs_distances(maze, maze.goal, door_open=True)
@@ -160,11 +170,17 @@ class MazeEnv:
     def is_terminal(self, state: State) -> bool:
         return (state.r, state.c) == self.maze.goal
 
-    def gate_open(self, phase: int) -> bool:
-        return phase in self.maze.gate_open_phases
+    def wizard_cell(self, phase: int) -> Position:
+        """The cell the wizard occupies (and blocks entry to) at ``phase``."""
+        return self.wizard_sequence[phase]
+
+    def doorway_free(self, phase: int) -> bool:
+        """True when the wizard is off the doorway cell (its home, the old
+        gate cell in front of the door)."""
+        return self.wizard_cell(phase) != self.maze.gate
 
     def enumerate_states(self) -> list[State]:
-        """All states: non-wall cells x has_key x gate phase."""
+        """All states: non-wall cells x has_key x blink phase."""
         return [State(r, c, k, p)
                 for r in range(self.maze.size) for c in range(self.maze.size)
                 if not self.maze.is_wall((r, c))
@@ -202,8 +218,8 @@ class MazeEnv:
             events = [EV_WALL_HIT]
         elif target == self.maze.door and not k:
             events = [EV_DOOR_LOCKED]
-        elif target == self.maze.gate and not self.gate_open(phase):
-            events = [EV_GATE_BLOCKED]
+        elif target == self.wizard_cell(phase):
+            events = [EV_WIZARD_BLOCKED]
         else:
             nr, nc = target
             cell = self.maze.cell(target)
@@ -301,16 +317,19 @@ def main() -> None:
             assert env.is_terminal(state) or abs(probs - 1.0) < 1e-12
     print("transition model: probabilities sum to 1 for every (s, a)")
 
-    # the gate phase visibly changes the model: same cell, different phase
-    gr, gc = maze.gate
-    approach = State(gr, gc - 1, 1, 0)  # gate open (phase 0)
-    blocked = State(gr, gc - 1, 1, 3)   # gate closed (phase 3)
-    for s in (approach, blocked):
+    # the blink phase visibly changes the model: same move, different phase
+    gr, gc = maze.gate  # the wizard's home cell, the doorway before the door
+    away = next(p for p in range(maze.gate_period)
+                if env.wizard_cell(p) != (gr, gc))
+    on_home = next(p for p in range(maze.gate_period)
+                   if env.wizard_cell(p) == (gr, gc))
+    for phase in (away, on_home):
+        s = State(gr, gc - 1, 1, phase)
         outs = env.transitions(s, RIGHT)
         move = next((p for p, ns, *_ in outs if (ns.r, ns.c) == (gr, gc)), 0.0)
         print(f"  from {tuple(s)} action=right: "
-              f"P(enter gate cell) = {move:.1f} (gate "
-              f"{'open' if env.gate_open(s.phase) else 'closed'})")
+              f"P(enter doorway) = {move:.1f} "
+              f"(wizard at {env.wizard_cell(phase)})")
 
     for mode in ("sparse", "shaped"):
         env = MazeEnv(maze, config, reward_mode=mode, seed=123)

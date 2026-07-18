@@ -8,11 +8,11 @@ from collections import Counter
 
 import pytest
 
-from environments.maze_map import NORMAL
+from environments.maze_map import NORMAL, WALL
 from environments.maze import (ACTION_DELTAS, ACTIONS, EV_DOOR_LOCKED,
-                               EV_DOOR_PASS, EV_GATE_BLOCKED, EV_GOAL,
-                               EV_KEY_PICKUP, EV_MOVE, EV_PENALTY,
-                               EV_TIMEOUT, EV_WALL_HIT, EventLogger, MazeEnv,
+                               EV_DOOR_PASS, EV_GOAL, EV_KEY_PICKUP, EV_MOVE,
+                               EV_PENALTY, EV_TIMEOUT, EV_WALL_HIT,
+                               EV_WIZARD_BLOCKED, EventLogger, MazeEnv,
                                State)
 
 DELTA_TO_ACTION = {delta: a for a, delta in ACTION_DELTAS.items()}
@@ -40,12 +40,6 @@ def det_step(env, state, action):
 @pytest.fixture()
 def det_env(maze, det_config):
     return MazeEnv(maze, det_config, seed=0)
-
-
-@pytest.fixture()
-def closed_phase(maze):
-    return next(p for p in range(maze.gate_period)
-                if p not in maze.gate_open_phases)
 
 
 class TestTransitionModel:
@@ -128,21 +122,47 @@ class TestDynamics:
         assert info["events"] == [EV_DOOR_PASS]
         assert reward == det_env.rewards["step"] + det_env.rewards["door_pass"]
 
-    def test_gate_blocked_when_closed_open_when_not(self, maze, det_env,
-                                                    closed_phase):
-        src = normal_neighbor(maze, maze.gate)
-        action = action_towards(src, maze.gate)
-        blocked = State(src[0], src[1], 1, closed_phase)
-        nxt, reward, _, _, info = det_step(det_env, blocked, action)
-        assert (nxt.r, nxt.c) == src
-        assert info["events"] == [EV_GATE_BLOCKED]
-        assert reward == (det_env.rewards["step"]
-                          + det_env.rewards["gate_blocked"])
+    def test_wizard_occupancy_follows_config_sequence(self, det_env,
+                                                      det_config):
+        seq = [tuple(c) for c in det_config["wizard"]["blink_sequence"]]
+        assert det_env.wizard_sequence == seq
+        assert [det_env.wizard_cell(p) for p in range(len(seq))] == seq
 
-        open_state = State(src[0], src[1], 1, maze.gate_open_phases[0])
-        nxt, _, _, _, info = det_step(det_env, open_state, action)
-        assert (nxt.r, nxt.c) == tuple(maze.gate)
-        assert info["events"] == [EV_MOVE]
+    def test_wizard_blocks_entry_at_every_phase(self, maze, det_env):
+        for phase in range(maze.gate_period):
+            cell = det_env.wizard_cell(phase)
+            src = normal_neighbor(maze, cell)
+            action = action_towards(src, cell)
+            nxt, reward, _, _, info = det_step(
+                det_env, State(src[0], src[1], 1, phase), action)
+            assert (nxt.r, nxt.c) == src
+            assert nxt.phase == (phase + 1) % maze.gate_period
+            assert info["events"] == [EV_WIZARD_BLOCKED]
+            assert reward == (det_env.rewards["step"]
+                              + det_env.rewards["wizard_blocked"])
+
+    def test_same_cell_blocked_and_free_across_phases(self, maze, det_env):
+        # the discriminating case: one target cell, both outcomes by phase
+        doorway = tuple(maze.gate)
+        src = normal_neighbor(maze, doorway)
+        action = action_towards(src, doorway)
+        occupied = [p for p in range(maze.gate_period)
+                    if det_env.wizard_cell(p) == doorway]
+        free = [p for p in range(maze.gate_period)
+                if det_env.wizard_cell(p) != doorway]
+        assert occupied and free
+        for phase in occupied:
+            nxt, _, _, _, info = det_step(
+                det_env, State(src[0], src[1], 1, phase), action)
+            assert (nxt.r, nxt.c) == src
+            assert info["events"] == [EV_WIZARD_BLOCKED]
+            assert not det_env.doorway_free(phase)
+        for phase in free:
+            nxt, _, _, _, info = det_step(
+                det_env, State(src[0], src[1], 1, phase), action)
+            assert (nxt.r, nxt.c) == doorway
+            assert info["events"] == [EV_MOVE]
+            assert det_env.doorway_free(phase)
 
     def test_key_pickup_once(self, maze, det_env):
         src = normal_neighbor(maze, maze.key)
@@ -178,6 +198,22 @@ class TestDynamics:
         assert reward == det_env.rewards["step"] + det_env.rewards["goal"]
         assert det_env.is_terminal(nxt)
         assert det_env.transitions(nxt, 0) == []
+
+
+class TestWizardConfig:
+    def test_sequence_length_must_match_period(self, maze, det_config):
+        cfg = copy.deepcopy(det_config)
+        cfg["wizard"]["blink_sequence"] = cfg["wizard"]["blink_sequence"][:-1]
+        with pytest.raises(ValueError):
+            MazeEnv(maze, cfg)
+
+    def test_sequence_cells_must_be_passable(self, maze, det_config):
+        cfg = copy.deepcopy(det_config)
+        wall = next((r, c) for r in range(maze.size) for c in range(maze.size)
+                    if maze.grid[r][c] == WALL)
+        cfg["wizard"]["blink_sequence"][0] = list(wall)
+        with pytest.raises(ValueError):
+            MazeEnv(maze, cfg)
 
 
 class TestEpisode:
@@ -227,7 +263,7 @@ class TestRewards:
                 continue
             for action in ACTIONS:
                 # the same s' can occur with different rewards (e.g. wall hit
-                # vs gate bump), so compare the full outcome distributions
+                # vs wizard bump), so compare the full outcome distributions
                 expected = sorted(
                     (round(p, 9), nxt, done,
                      round(r + gamma * shaped._phi(nxt) - shaped._phi(state), 9))

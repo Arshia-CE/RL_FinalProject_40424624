@@ -26,7 +26,7 @@ CELL_LEGEND = {
     KEY: "key",
     DOOR: "locked door",
     GOAL: "goal",
-    GATE: "periodic gate",
+    GATE: "wizard home (doorway)",
 }
 
 ACTIONS_4 = ((-1, 0), (1, 0), (0, -1), (0, 1))  # up, down, left, right
@@ -116,10 +116,10 @@ def bfs_shortest_path(grid: list[list[str]], src: Position, dst: Position,
                       door_open: bool) -> list[Position] | None:
     """Deterministic BFS shortest path on the 4-connected grid.
 
-    Walls block movement; the door blocks it unless ``door_open``. The gate
-    and penalty cells are passable (a closed gate only delays the agent, and
-    penalty cells merely cost reward). Returns the path including both
-    endpoints, or None if unreachable.
+    Walls block movement; the door blocks it unless ``door_open``. The
+    wizard's blink cells and penalty cells are passable (the wizard only
+    delays the agent, and penalty cells merely cost reward). Returns the
+    path including both endpoints, or None if unreachable.
     """
     n = len(grid)
     if src == dst:

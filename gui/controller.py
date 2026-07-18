@@ -17,9 +17,9 @@ from agents.q_learning import QLearningAgent, epsilon_schedule
 from agents.sarsa_lambda import SarsaLambdaAgent
 from agents.value_iteration import MODELS_DIR, ValueIteration
 from environments.maze_map import MAPS_DIR, MazeMap
-from environments.maze import (EV_DOOR_LOCKED, EV_DOOR_PASS, EV_GATE_BLOCKED,
-                               EV_GOAL, EV_KEY_PICKUP, EV_PENALTY,
-                               EV_WALL_HIT, MazeEnv, State)
+from environments.maze import (EV_DOOR_LOCKED, EV_DOOR_PASS, EV_GOAL,
+                               EV_KEY_PICKUP, EV_PENALTY, EV_WALL_HIT,
+                               EV_WIZARD_BLOCKED, MazeEnv, State)
 from experiments.common import load_config
 
 WORLDS = {
@@ -215,7 +215,7 @@ class GameSession:
             "direction": info["executed_direction"],
             "moved": (nxt.r, nxt.c) != (prev.r, prev.c),
             "wall": EV_WALL_HIT in events,
-            "gate_blocked": EV_GATE_BLOCKED in events,
+            "wizard_blocked": EV_WIZARD_BLOCKED in events,
             "door_locked": EV_DOOR_LOCKED in events,
             "key": EV_KEY_PICKUP in events,
             "door": EV_DOOR_PASS in events,
@@ -275,13 +275,15 @@ class GameSession:
         return int(np.argmax(q))
 
     def gate_open(self) -> bool:
-        return self.env.gate_open(self.state.phase)
+        return self.env.doorway_free(self.state.phase)
 
     def gate_countdown(self) -> int:
-        phases = self.maze.gate_open_phases
-        if self.gate_open():
-            return len(phases) - self.state.phase
-        return self.maze.gate_period - self.state.phase
+        """Phases until the doorway's free/occupied status next flips."""
+        period = self.maze.gate_period
+        now = self.gate_open()
+        return next((d for d in range(1, period + 1)
+                     if self.env.doorway_free((self.state.phase + d) % period)
+                     != now), period)
 
     @property
     def steps(self) -> int:

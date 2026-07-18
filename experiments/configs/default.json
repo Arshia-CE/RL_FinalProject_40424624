@@ -12,6 +12,11 @@
         "gate_open_phases": [0, 1, 2]
     },
 
+    "wizard": {
+        "blink_sequence": [[14, 11], [14, 12], [14, 12], [14, 12], [15, 12], [14, 10]],
+        "comment": "cell the wizard occupies at each phase (length must equal gate_period); a patrol around the doorway — the old gate cell [14,12] is held for 3 consecutive phases (mirroring the gate's 3-of-6 closed), the approach cells on the rest. A validation VI solve showed the plan's original ping-pong (no cell held 2 phases in a row) makes a deliberate bump the universal optimal wait: phase-independent policy, V-spread ~12; this patrol restores the gate's ~24 spread and a phase-dependent corridor policy"
+    },
+
     "transition": {
         "p_intended": 0.8,
         "p_perpendicular": 0.1
@@ -28,7 +33,7 @@
             "wall_hit": -5,
             "penalty_cell": -10,
             "locked_door_attempt": -2,
-            "gate_blocked": -2,
+            "wizard_blocked": -2,
             "key_pickup": 50,
             "door_pass": 0,
             "goal": 200,

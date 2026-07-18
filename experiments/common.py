@@ -15,7 +15,7 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from environments.maze_map import DEFAULT_CONFIG_PATH
-from environments.maze import (EV_GATE_BLOCKED, EV_PENALTY, EV_WALL_HIT,
+from environments.maze import (EV_PENALTY, EV_WALL_HIT, EV_WIZARD_BLOCKED,
                                MazeEnv, State)
 
 EVAL_EPISODES = 500
@@ -75,4 +75,4 @@ def evaluate_greedy(env: MazeEnv, action_fn, episodes: int,
             "mean_steps": round(sum(steps) / episodes, 2),
             "penalty_entries_per_ep": round(events[EV_PENALTY] / episodes, 3),
             "wall_hits_per_ep": round(events[EV_WALL_HIT] / episodes, 3),
-            "gate_blocked_per_ep": round(events[EV_GATE_BLOCKED] / episodes, 3)}
+            "wizard_blocked_per_ep": round(events[EV_WIZARD_BLOCKED] / episodes, 3)}
