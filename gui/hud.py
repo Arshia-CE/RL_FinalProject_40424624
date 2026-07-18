@@ -45,7 +45,7 @@ class HudBar:
         self.score = self._stat(holder, "SCORE")
         self.steps = self._stat(holder, "STEPS")
         self.key = self._stat(holder, "KEY")
-        self.dragon = self._stat(holder, "DRAGON")
+        self.wizard = self._stat(holder, "WIZARD")
         self.episode = self._stat(holder, "EP")
         self.epsilon = self._stat(holder, "ε")
         self.win = self._stat(holder, "WIN")
@@ -62,7 +62,7 @@ class HudBar:
         value.pack()
         return value
 
-    def update(self, score, steps_text, has_key, gate_open, countdown,
+    def update(self, score, steps_text, has_key, doorway_free, countdown,
                episode, epsilon, win_rate, trained_done=False):
         self.score.config(text=str(score))
         self.steps.config(text=steps_text)
@@ -70,10 +70,12 @@ class HudBar:
             self.key.config(text="GOT!", fg=theme.GOLD)
         else:
             self.key.config(text="---", fg=theme.DISABLED)
-        if gate_open:
-            self.dragon.config(text=f"IN·{countdown}", fg=theme.GREEN)
+        # wizard AWAY = doorway passable, HOME = he blocks it; the number
+        # counts the phases until that flips
+        if doorway_free:
+            self.wizard.config(text=f"AWAY·{countdown}", fg=theme.GREEN)
         else:
-            self.dragon.config(text=f"OUT·{countdown}", fg=theme.POP_BAD)
+            self.wizard.config(text=f"HOME·{countdown}", fg=theme.POP_BAD)
         self.episode.config(text=str(episode))
         if trained_done:
             self.epsilon.config(text="DONE", fg=theme.GREEN)

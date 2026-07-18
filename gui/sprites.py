@@ -14,13 +14,13 @@ PAL = {
     "O": "#3a55c9", "o": "#22337f",
     "B": "#6e4116",
     "E": "#1a1a1a", "W": "#ffffff",
-    # dragon
-    "G": "#3fa34d", "g": "#2c7238", "C": "#f2e6b8", "H": "#ece2c8",
-    "R": "#e0402e", "r": "#8f1d12",
+    "R": "#e0402e",  # princess crown ruby, hearts
     # princess
     "P": "#f27bb6", "p": "#c74e8c", "y": "#ffd94a",
     "L": "#dfe6f0",  # silver crown
     "d": "#0d0d18",
+    # wizard (violet robe, cyan staff orb)
+    "V": "#7a4bc9", "v": "#4e2d85", "Z": "#79e8f2",
 }
 
 _HERO_HEAD_DOWN = [
@@ -128,35 +128,29 @@ PRINCESS = [
     ".dddddddddddddd.",
 ]
 
-# long-necked dragon rising out of the lair ellipse: horns, angry brows,
-# fanged jaw, folded wings and a plated belly — centered on the 16px cell
-DRAGON = [
-    "..H..........H..",
-    "..HH........HH..",
-    "...HGGGGGGGGH...",
-    "..GGGGGGGGGGGG..",
-    ".GGggGGGGGGggGG.",
-    ".GGWWEGGGGEWWGG.",
-    ".GGWWEGGGGEWWGG.",
-    ".GGGGGEGGEGGGGG.",
-    "..GGRRRRRRRRGG..",
-    "..GRRWRRRRWRRG..",
-    "...GRRRRRRRRG...",
-    "....GGGGGGGG....",
-    "....GCCCCCCG....",
-    ".r..GCCCCCCG..r.",
-    ".rr.GCCCCCCG.rr.",
-    ".rrrGCCCCCCGrrr.",
-    ".rr.GCCCCCCG.rr.",
-    ".r..GCCCCCCG..r.",
-    "..g.GCCCCCCG.g..",
-    "....GCCCCCCG....",
-    "..g.GCCCCCCG.g..",
-    "....GCCCCCCG....",
-    "...GGCCCCCCGG...",
-    "...GGCCCCCCGG...",
-    "..GGGCCCCCCGGG..",
-    "..GGGCCCCCCGGG..",
+# blinking wizard: pointy star-tipped hat, white beard, violet robe and a
+# wooden staff (cane) topped with a cyan orb; 3 rows taller than the cell
+# so the hat pokes above the tile it stands on
+WIZARD = [
+    ".......yy.......",
+    "......VVVV......",
+    "......VVVV..ZZ..",
+    ".....VVVVV..ZZ..",
+    ".....VVVVVV..B..",
+    "....VVVVVVV..B..",
+    "....VVyVVVVV.B..",
+    "...VVVVVVVVV.B..",
+    "..vvvvvvvvvvvB..",
+    "....SSSSSS...B..",
+    "...VSESSESV..B..",
+    "...WSSSsSSW..B..",
+    "..WWWSSSSWWW.B..",
+    "..WWWWWWWWW..B..",
+    "..vVVWWWWVv.SB..",
+    "..VVVVWWVVVVSB..",
+    ".VVVyVVVVVVV.B..",
+    ".VVVVVVVVVVv.B..",
+    ".vvvvvvvvvvv.B..",
 ]
 
 # ink-outlined so it pops against the sand floor
@@ -219,7 +213,8 @@ def build(rows: list[str], scale: int, flip: bool = False) -> tk.PhotoImage:
 
 
 def crop_top(rows: list[str], scale: int, visible_rows: int) -> tk.PhotoImage:
-    """The top `visible_rows` rows of a sprite (for the emerging dragon)."""
+    """The top `visible_rows` rows of a sprite (for the materializing
+    wizard, revealed hat-first out of the poof)."""
     key = (id(rows), scale, "crop", visible_rows)
     if key in _cache:
         return _cache[key]

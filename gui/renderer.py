@@ -1,6 +1,6 @@
 """MazeMario game board: pixel-tile rendering of a MazeMap plus the
-animation layer (hero tween/bump/fall, dragon den, door slide, key bob,
-reward popups, sparks, hearts)."""
+animation layer (hero tween/bump/fall, wizard blink poofs, door slide,
+key bob, reward popups, sparks, hearts)."""
 
 from __future__ import annotations
 
@@ -14,8 +14,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from environments.maze_map import (DOOR, GATE, GOAL, KEY, PENALTY, START,
-                                   MazeMap)
+from environments.maze_map import PENALTY, START, MazeMap
 from gui import sprites, theme
 
 UP, DOWN, LEFT, RIGHT = 0, 1, 2, 3
@@ -39,10 +38,12 @@ class GameBoard(tk.Canvas):
 
     def _reset_anim(self) -> None:
         self.anim = {"move": None, "facing": DOWN, "frame": 0, "bump": None,
-                     "fall": None, "emerge": 0.0, "dodge": 0.0,
-                     "door_open": 0.0, "door_opening": False, "roar": 0.0,
-                     "win_t": 0.0, "hearts": [], "popups": [], "sparks": []}
+                     "fall": None, "rise": 1.0, "zap": 0.0,
+                     "door_open": 0.0, "door_opening": False,
+                     "win_t": 0.0, "hearts": [], "popups": [], "sparks": [],
+                     "puffs": []}
         self._agent_cell = None
+        self._wizard_cell = None
         self._key_visible = True
 
     # coordinate helpers (design units are 16px tiles; we scale by `scale`)
@@ -69,7 +70,7 @@ class GameBoard(tk.Canvas):
                 else:
                     self._draw_floor(r, c, T, maze.grid[r][c])
         self._draw_door()
-        self._draw_den()
+        self._draw_wizard()
         self._draw_princess()
         self._draw_key()
         self._draw_hero(maze.start, DOWN, 0)
@@ -160,25 +161,10 @@ class GameBoard(tk.Canvas):
                                   fill=theme.INK, outline="",
                                   tags="door_panel")
 
-    def _draw_den(self) -> None:
-        """Dragon lair on the gate cell; the dragon item slides out of it."""
-        g = self.maze.gate
-        x, y = self.cell_xy(*g)
-        s = self.px
-        cx, cy = x + s(8), y + s(11)
-        self._den = (x, cx, cy)
-        self.create_oval(cx - s(8), cy - s(4.6), cx + s(8), cy + s(4.6),
-                         fill="#2c7238", outline="")
-        self.create_oval(cx - s(6.4), cy - s(3.4), cx + s(6.4), cy + s(3.4),
-                         fill="#0a1206", outline="")
-        self._dragon_item = self.create_image(x, cy, anchor="sw", image="",
-                                              tags="dragon")
-        self.create_arc(cx - s(8), cy - s(4.6), cx + s(8), cy + s(4.6),
-                        start=180, extent=180, style="chord",
-                        fill="#3fa34d", outline="")
-        self.create_arc(cx - s(6.4), cy - s(3.4), cx + s(6.4), cy + s(3.4),
-                        start=180, extent=180, style="chord",
-                        fill="#0a1206", outline="")
+    def _draw_wizard(self) -> None:
+        """The blinking wizard; set_wizard_cell() places and animates him."""
+        self._wizard_item = self.create_image(0, 0, anchor="sw", image="",
+                                              state="hidden", tags="wizard")
 
     def _draw_princess(self) -> None:
         g = self.maze.goal
@@ -278,8 +264,13 @@ class GameBoard(tk.Canvas):
     def open_door(self) -> None:
         self.anim["door_opening"] = True
 
-    def roar(self) -> None:
-        self.anim["roar"] = 0.001
+    def zap(self) -> None:
+        """Blocked entry: staggered zap rings plus a wizard shake."""
+        self.anim["zap"] = 0.001
+        if self._wizard_cell is not None:
+            for delay, color in ((0.0, "#ffffff"), (-0.09, "#79e8f2")):
+                self._spawn_particle("ring", self._wizard_cell, t=delay,
+                                     dur=0.28, color=color)
 
     def celebrate(self) -> None:
         self.anim["win_t"] = 0.0001
@@ -302,8 +293,46 @@ class GameBoard(tk.Canvas):
         self.popup((from_pos[0] + dr * 0.5, from_pos[1] + dc * 0.5), text,
                    color)
 
-    def set_gate_open(self, is_open: bool) -> None:
-        self._gate_target = 0.0 if is_open else 1.0
+    def set_wizard_cell(self, cell) -> None:
+        """Blink the wizard: vanish poof at the old cell, materialize poof
+        and a hat-first rise at the new one (first call places silently)."""
+        cell = tuple(cell)
+        if cell == self._wizard_cell:
+            return
+        if self._wizard_cell is not None:
+            self._spawn_poof(self._wizard_cell)
+            self._spawn_poof(cell)
+            self.anim["rise"] = 0.0
+        self._wizard_cell = cell
+
+    def _spawn_poof(self, cell) -> None:
+        """Smoke puffs, flying sparkles and an expanding ring at a cell."""
+        for _ in range(7):
+            ang = random.random() * math.tau
+            self._spawn_particle(
+                "smoke", cell, dur=0.42,
+                dx=math.cos(ang) * 3, dy=math.sin(ang) * 3,
+                vx=math.cos(ang) * 14 * self.scale,
+                vy=math.sin(ang) * 14 * self.scale - 10 * self.scale,
+                r=(2.2 + random.random() * 2.2) * self.scale)
+        for i in range(8):
+            ang = (i / 8) * math.tau + random.random() * 0.5
+            speed = (55 + random.random() * 40) * self.scale
+            self._spawn_particle(
+                "spark", cell, dur=0.35,
+                vx=math.cos(ang) * speed, vy=math.sin(ang) * speed,
+                color=theme.GOLD if i % 2 else "#79e8f2")
+        self._spawn_particle("ring", cell, dur=0.3, color="#c9b8ec")
+
+    def _spawn_particle(self, kind: str, cell, t: float = 0.0, dur: float = 0.3,
+                        dx: float = 0.0, dy: float = 0.0, vx: float = 0.0,
+                        vy: float = 0.0, r: float = 0.0,
+                        color: str = "#ffffff") -> None:
+        x, y = self.cell_xy(*cell)
+        self.anim["puffs"].append({
+            "kind": kind, "t": t, "dur": dur, "vx": vx, "vy": vy, "r": r,
+            "color": color, "x": x + self.cell / 2 + self.px(dx),
+            "y": y + self.cell / 2 + self.px(dy)})
 
     # per-frame animation tick
 
@@ -325,20 +354,11 @@ class GameBoard(tk.Canvas):
             an["fall"]["t"] += dt
             if an["fall"]["t"] > 0.9:
                 an["fall"] = None
-        if an["roar"]:
-            an["roar"] += dt
-            if an["roar"] > 0.5:
-                an["roar"] = 0.0
-        target = getattr(self, "_gate_target", 0.0)
-        speed = dt * 4.5
-        an["emerge"] += max(-speed, min(speed, target - an["emerge"]))
-        # entry-only barrier: with the hero standing on the gate cell, the
-        # dragon slides aside toward the approach so both stay visible
-        on_gate = (self._agent_cell is not None
-                   and tuple(self._agent_cell) == tuple(self.maze.gate))
-        an["dodge"] += max(-speed, min(speed,
-                                       (1.0 if on_gate else 0.0)
-                                       - an["dodge"]))
+        if an["zap"]:
+            an["zap"] += dt
+            if an["zap"] > 0.4:
+                an["zap"] = 0.0
+        an["rise"] = min(1.0, an["rise"] + dt * 4.5)
         if an["door_opening"] and an["door_open"] < 1:
             an["door_open"] = min(1.0, an["door_open"] + dt * 3)
             self._paint_door_panel()
@@ -396,6 +416,48 @@ class GameBoard(tk.Canvas):
                 self.coords(sk["item"], sk["x"], sk["y"],
                             sk["x"] + self.scale * 2, sk["y"] + self.scale * 2)
         an["sparks"] = [sk for sk in an["sparks"] if sk["t"] < 0.8]
+        for pf in an["puffs"]:
+            pf["t"] += dt
+            if pf["t"] < 0:  # staggered start (second zap ring)
+                continue
+            if pf["t"] >= pf["dur"]:
+                if "item" in pf:
+                    self.delete(pf["item"])
+                continue
+            pf["x"] += pf["vx"] * dt
+            pf["y"] += pf["vy"] * dt
+            drag = max(0.0, 1 - 4 * dt)
+            pf["vx"] *= drag
+            pf["vy"] *= drag
+            self._draw_particle(pf)
+        an["puffs"] = [pf for pf in an["puffs"] if pf["t"] < pf["dur"]]
+
+    SMOKE_SHADES = ("#ffffff", "#e6dcf7", "#c9b8ec", "#a893da")
+
+    def _draw_particle(self, pf: dict) -> None:
+        """One puff/ring/spark frame: size and shade follow life fraction."""
+        p = pf["t"] / pf["dur"]
+        if pf["kind"] == "smoke":
+            r = pf["r"] * (0.4 + math.sin(math.pi * p) * 1.4)
+            if "item" not in pf:
+                pf["item"] = self.create_oval(0, 0, 0, 0, outline="")
+            self.itemconfigure(pf["item"],
+                               fill=self.SMOKE_SHADES[min(3, int(p * 4))])
+        elif pf["kind"] == "ring":
+            r = self.px(2 + 9.5 * p)
+            if "item" not in pf:
+                pf["item"] = self.create_oval(0, 0, 0, 0, fill="",
+                                              outline=pf["color"])
+            self.itemconfigure(pf["item"],
+                               width=max(1.0, self.scale * 1.5 * (1 - p)))
+        else:  # spark
+            r = self.scale * (1.6 - p)
+            if "item" not in pf:
+                pf["item"] = self.create_rectangle(0, 0, 0, 0,
+                                                   fill=pf["color"],
+                                                   outline="")
+        self.coords(pf["item"], pf["x"] - r, pf["y"] - r,
+                    pf["x"] + r, pf["y"] + r)
 
     def _redraw_dynamic(self) -> None:
         an = self.anim
@@ -416,20 +478,24 @@ class GameBoard(tk.Canvas):
         else:
             bob = math.sin(self.time * 2.5) * 1.5 * self.scale
         self.coords(self._princess_item, gx, gy + bob)
-        # dragon emerges from / sinks into the den
-        x, cx, cy = self._den
-        visible = max(0, min(len(sprites.DRAGON),
-                             round(len(sprites.DRAGON) * an["emerge"])))
-        if visible == 0:
-            self.itemconfigure(self._dragon_item, state="hidden")
-        else:
-            shake = (math.sin(an["roar"] * 12) * 1.5 * self.scale
-                     if an["roar"] else 0)
-            self.itemconfigure(
-                self._dragon_item, state="normal",
-                image=sprites.crop_top(sprites.DRAGON, self.scale, visible))
-            self.coords(self._dragon_item,
-                        x + shake - self.px(8) * an["dodge"], cy)
+        # wizard: hat-first rise after a blink, hover bob, zap shake
+        if self._wizard_cell is not None:
+            wx, wy = self.cell_xy(*self._wizard_cell)
+            visible = max(0, min(len(sprites.WIZARD),
+                                 round(len(sprites.WIZARD) * an["rise"])))
+            if visible == 0:
+                self.itemconfigure(self._wizard_item, state="hidden")
+            else:
+                shake = (math.sin(an["zap"] * 40) * 1.6 * self.scale
+                         if an["zap"] else 0.0)
+                bob = (math.sin(self.time * 2.2) * 1.2 * self.scale
+                       if an["rise"] >= 1.0 else 0.0)
+                self.itemconfigure(
+                    self._wizard_item, state="normal",
+                    image=sprites.crop_top(sprites.WIZARD, self.scale,
+                                           visible))
+                self.coords(self._wizard_item, wx + shake,
+                            wy + self.cell + bob)
         # hero position (tween / bump / fall)
         r, c = self._agent_cell
         hop = 0.0

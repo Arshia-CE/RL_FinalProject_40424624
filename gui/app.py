@@ -86,20 +86,21 @@ class MazeMarioApp:
 
     def _load_board(self) -> None:
         self.board.set_map(self.session.maze)
-        self.board.set_gate_open(self.session.gate_open())
+        self.board.set_wizard_cell(self.session.wizard_cell())
         world = WORLDS[self.session.world]
         self.world_label.config(text=world["label"])
         maze = self.session.maze
         self.status_label.config(
             text=f"{maze.size}X{maze.size} · {maze.wall_count} WALLS · "
-                 f"{len(maze.penalty_cells)} PITS · GATE T={maze.gate_period}")
+                 f"{len(maze.penalty_cells)} PITS · "
+                 f"WIZARD T={maze.gate_period}")
         self._update_hud()
 
     def _update_hud(self) -> None:
         self.hud.update(round(self.session.score),
                         f"{self.session.steps}/{self.session.step_cap}",
-                        self.session.has_key, self.session.gate_open(),
-                        self.session.gate_countdown(),
+                        self.session.has_key, self.session.doorway_free(),
+                        self.session.wizard_countdown(),
                         self.session.episode_number(),
                         self.session.current_epsilon(),
                         self.session.win_rate(),
@@ -200,7 +201,7 @@ class MazeMarioApp:
             if fast_train:
                 self.session.run_batch(int(self.speed))
                 self.board.new_episode()
-                self.board.set_gate_open(self.session.gate_open())
+                self.board.set_wizard_cell(self.session.wizard_cell())
                 self._update_hud()
                 self._policy_tick += 1
                 if self.show_policy and self._policy_tick % 6 == 0:
@@ -233,7 +234,7 @@ class MazeMarioApp:
                                      theme.POP_BAD)
         if event["wizard_blocked"]:
             self.board.bump(direction)
-            self.board.roar()
+            self.board.zap()
             self.board.popup_between(prev, direction,
                                      f"{rewards['wizard_blocked']:+d}",
                                      theme.POP_BAD)
@@ -266,7 +267,7 @@ class MazeMarioApp:
             self.root.after(1400, self._show_outcome)
         elif event["outcome"] == "timeout":
             self.root.after(400, self._show_outcome)
-        self.board.set_gate_open(self.session.gate_open())
+        self.board.set_wizard_cell(self.session.wizard_cell())
         if self.show_policy:
             self._refresh_policy()
         self._update_hud()
@@ -276,7 +277,7 @@ class MazeMarioApp:
             return
         self.session.begin_next_episode()
         self.board.new_episode()
-        self.board.set_gate_open(self.session.gate_open())
+        self.board.set_wizard_cell(self.session.wizard_cell())
         self._update_hud()
 
     def _show_outcome(self) -> None:

@@ -53,7 +53,7 @@ RL_FinalProject_40424624/
 │   ├── controller.py      # Game sessions: WATCH (trained) / TRAIN (live)
 │   ├── renderer.py        # Pixel game board + animation engine
 │   ├── hud.py             # HUD, control bar, menus, overlays
-│   ├── sprites.py         # Pixel-art sprites (hero, dragon, princess, ...)
+│   ├── sprites.py         # Pixel-art sprites (hero, wizard, princess, ...)
 │   └── theme.py           # Palette, fonts, timing
 ├── experiments/
 │   ├── run_experiments.py # Dispatcher: runs all or selected experiments
@@ -120,17 +120,19 @@ plays the maze. It boots into a title menu with three selectors:
 
 In-game controls: PAUSE (menu), PLAY/PAUSE, STEP (single step), RESTART,
 animation-speed slider (0.5–4×), and POLICY — an overlay of greedy-action
-arrows for the agent's current key status and gate phase, updating live
+arrows for the agent's current key status and blink phase, updating live
 during training. The HUD shows score (cumulative reward), steps/step-cap,
-key status, the dragon-gate countdown, episode number, ε, and the recent
-success rate.
+key status, the wizard's position (AWAY/HOME with the phases until the
+doorway's status flips), episode number, ε, and the recent success rate.
 
 Everything on the board is diegetic: walls are bricks, penalty cells are
 thorn-ringed pits the hero falls into (with a floating −10), the key bobs
 and sparkles, the locked door slides open, reaching the princess wins the
-level — and the periodic gate is a dragon that emerges from its den on
-closed phases and retreats on open ones, with bumps, popups and win/timeout
-screens animating every logged environment event.
+level — and the blinking wizard patrols the doorway corridor, vanishing in
+a poof of smoke and sparkles and materializing hat-first on his next cell
+each time the phase moves him, zapping intruders who try to step onto him,
+with bumps, popups and win/timeout screens animating every logged
+environment event.
 
 ## Reproducing the results
 

@@ -274,13 +274,17 @@ class GameSession:
             return None
         return int(np.argmax(q))
 
-    def gate_open(self) -> bool:
+    def wizard_cell(self) -> tuple:
+        return self.env.wizard_cell(self.state.phase)
+
+    def doorway_free(self) -> bool:
         return self.env.doorway_free(self.state.phase)
 
-    def gate_countdown(self) -> int:
-        """Phases until the doorway's free/occupied status next flips."""
+    def wizard_countdown(self) -> int:
+        """Phases until the doorway is free again (or, when it already is,
+        until the wizard comes back home and blocks it)."""
         period = self.maze.gate_period
-        now = self.gate_open()
+        now = self.doorway_free()
         return next((d for d in range(1, period + 1)
                      if self.env.doorway_free((self.state.phase + d) % period)
                      != now), period)
