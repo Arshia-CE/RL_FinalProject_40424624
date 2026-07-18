@@ -70,7 +70,7 @@ def run_value_iteration(config: dict) -> None:
     plot_policy_arrows(maze, reference.policy,
                        f"Optimal policy (γ={ref_gamma:g}, sparse reward)",
                        FIG_DIR / f"vi_policy_gamma{ref_gamma:g}.png")
-    plot_policy_phase_grid(maze, reference.policy, maze.gate_open_phases,
-                           f"Optimal policy per gate phase (γ={ref_gamma:g})",
+    plot_policy_phase_grid(maze, reference.policy, env.wizard_sequence,
+                           f"Optimal policy per blink phase (γ={ref_gamma:g})",
                            FIG_DIR / f"vi_policy_by_phase_gamma{ref_gamma:g}.png")
     print(f"  wrote {RAW_DIR / 'vi_gamma_sweep.csv'} and 4 figures")

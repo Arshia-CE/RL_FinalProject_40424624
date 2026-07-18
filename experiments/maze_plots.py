@@ -81,7 +81,7 @@ def draw_maze(ax, maze: MazeMap, wash_alpha: float = 0.35,
 
 def value_grid(maze: MazeMap, V: dict[State, float], has_key: int,
                reduce_phases=max) -> np.ma.MaskedArray:
-    """V reduced over gate phases for one key status; walls masked."""
+    """V reduced over blink phases for one key status; walls masked."""
     grid = np.full((maze.size, maze.size), np.nan)
     for r in range(maze.size):
         for c in range(maze.size):
@@ -103,7 +103,7 @@ def plot_value_heatmap(maze: MazeMap, V: dict[State, float], title: str,
         _cell_letters(ax, maze)
         ax.set_title("without key (k=0)" if k == 0 else "with key (k=1)")
     cbar = fig.colorbar(im, ax=axes, shrink=0.85)
-    cbar.set_label("V (max over gate phases)", color=INK_2)
+    cbar.set_label("V (max over blink phases)", color=INK_2)
     cbar.outline.set_edgecolor(GRID_COLOR)
     fig.suptitle(title, color=INK)
     save_figure(fig, path)
@@ -124,15 +124,15 @@ def plot_policy_arrows(maze: MazeMap, policy: dict[State, int | None],
                 ax.text(c, r + 0.05, ARROW[action], color=INK, fontsize=9,
                         ha="center", va="center")
         ax.set_title(f"{'without key (k=0)' if k == 0 else 'with key (k=1)'}"
-                     f", gate phase {phase}")
+                     f", blink phase {phase}")
     fig.suptitle(title, color=INK)
     save_figure(fig, path)
 
 
 def plot_policy_phase_grid(maze: MazeMap, policy: dict[State, int | None],
-                           gate_open_phases: list[int], title: str,
+                           wizard_sequence: list, title: str,
                            path: Path, has_key: int = 1) -> None:
-    """Small multiples: the greedy policy at every gate phase (fixed key)."""
+    """Small multiples: the greedy policy at every blink phase (fixed key)."""
     period = maze.gate_period
     rows = 2
     cols = (period + 1) // 2
@@ -147,8 +147,10 @@ def plot_policy_phase_grid(maze: MazeMap, policy: dict[State, int | None],
                 if action is not None:
                     ax.text(c, r + 0.05, ARROW[action], color=INK,
                             fontsize=6.5, ha="center", va="center")
-        state_txt = "open" if phase in gate_open_phases else "closed"
-        ax.set_title(f"phase {phase} — gate {state_txt}")
+        wr, wc = wizard_sequence[phase]
+        doorway = "blocked" if (wr, wc) == tuple(maze.gate) else "free"
+        ax.set_title(f"phase {phase} — wizard at ({wr},{wc}), "
+                     f"doorway {doorway}")
     for ax in axes.flat[period:]:
         ax.axis("off")
     fig.suptitle(f"{title} (has_key={has_key})", color=INK)
@@ -176,7 +178,7 @@ def plot_visit_map(maze: MazeMap, visits: dict[State, int], title: str,
         _cell_letters(ax, maze)
         ax.set_title("without key (k=0)" if k == 0 else "with key (k=1)")
     cbar = fig.colorbar(im, ax=axes, shrink=0.85)
-    cbar.set_label("log₁₀(visits + 1), summed over gate phases",
+    cbar.set_label("log₁₀(visits + 1), summed over blink phases",
                    color=INK_2)
     cbar.outline.set_edgecolor(GRID_COLOR)
     fig.suptitle(title, color=INK)
@@ -221,7 +223,7 @@ def plot_final_paths(maze: MazeMap, rollouts: list[tuple[str, dict]],
 def plot_transfer_q_diff(maze: MazeMap, q_before: dict, q_after: dict,
                          title: str, path: Path) -> None:
     """Before/after target training on a transferred table: per-cell
-    max-action |ΔQ| (top row) and the share of gate phases keeping the
+    max-action |ΔQ| (top row) and the share of blink phases keeping the
     transferred greedy action (bottom row; phases with no data blank)."""
     zeros = np.zeros(len(ARROW))
     dq_grids, keep_grids = [], []
@@ -255,7 +257,7 @@ def plot_transfer_q_diff(maze: MazeMap, q_before: dict, q_after: dict,
         _cell_letters(ax, maze)
         ax.set_title("without key (k=0)" if k == 0 else "with key (k=1)")
     cbar = fig.colorbar(im_dq, ax=axes[0], shrink=0.9)
-    cbar.set_label("max-action |ΔQ| (max over gate phases)", color=INK_2)
+    cbar.set_label("max-action |ΔQ| (max over blink phases)", color=INK_2)
     cbar.outline.set_edgecolor(GRID_COLOR)
     for ax, grid, k in zip(axes[1], keep_grids, (0, 1)):
         base = np.tile(hex_to_rgb(SURFACE), (maze.size, maze.size, 1))
@@ -269,7 +271,7 @@ def plot_transfer_q_diff(maze: MazeMap, q_before: dict, q_after: dict,
         _cell_letters(ax, maze)
         ax.set_title("without key (k=0)" if k == 0 else "with key (k=1)")
     cbar = fig.colorbar(im_keep, ax=axes[1], shrink=0.9)
-    cbar.set_label("share of gate phases keeping the transferred greedy "
+    cbar.set_label("share of blink phases keeping the transferred greedy "
                    "action", color=INK_2)
     cbar.outline.set_edgecolor(GRID_COLOR)
     fig.suptitle(title, color=INK)
@@ -279,7 +281,7 @@ def plot_transfer_q_diff(maze: MazeMap, q_before: dict, q_after: dict,
 def plot_disagreement_map(maze: MazeMap, agent_policy: dict,
                           agent_defined: set, vi_policy: dict, title: str,
                           path: Path) -> None:
-    """Per-cell share of gate phases whose greedy action matches VI.
+    """Per-cell share of blink phases whose greedy action matches VI.
 
     Blue = agrees in all phases, red = disagrees in all; cells the agent
     never visited stay surface-colored.
@@ -306,7 +308,7 @@ def plot_disagreement_map(maze: MazeMap, agent_policy: dict,
         _cell_letters(ax, maze)
         ax.set_title("without key (k=0)" if k == 0 else "with key (k=1)")
     cbar = fig.colorbar(im, ax=axes, shrink=0.85)
-    cbar.set_label("share of gate phases agreeing with VI", color=INK_2)
+    cbar.set_label("share of blink phases agreeing with VI", color=INK_2)
     cbar.outline.set_edgecolor(GRID_COLOR)
     fig.suptitle(f"{title} — unvisited cells left blank", color=INK)
     save_figure(fig, path)

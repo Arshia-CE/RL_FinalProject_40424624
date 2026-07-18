@@ -20,15 +20,21 @@ maze_size  = 15 + (base_seed % 4)       # = 17  ->  17x17 maze
 |---|---|
 | Base seed | `2` |
 | Maze size | `17 x 17` |
-| Dynamic feature | **Periodic gate** (opens/closes on a fixed cycle) |
-| State representation | `s = (x, y, has_key, gate_phase)` |
+| Dynamic feature | **Moving obstacle** — a wizard blinking along a fixed 6-phase patrol of the doorway corridor |
+| State representation | `s = (x, y, has_key, phase)` |
 
-> **Gate semantics — two designs.** This branch is the **main design**:
-> a move into the gate cell succeeds if the gate is open at the moment
-> the move is made (departure semantics). An alternative design in which
-> the gate must be open **on arrival** — the phase after the step — is
-> implemented, fully re-run and analyzed on the **`future_phase`**
-> branch; its report closes with a retrospective comparing the two.
+> **Three task designs, three branches.** `main` implements the
+> **periodic gate** with departure semantics (a move into the gate cell
+> succeeds if the gate is open when the move is made);
+> **`future_phase`** changes the gate to arrival semantics. This branch
+> (**`wizard_obstacle`**) replaces the gate with a **moving obstacle**:
+> a wizard occupies one cell of a fixed blink sequence per phase —
+> holding the doorway for phases 1–3, its approach cells otherwise — and
+> a move is blocked iff its target is the wizard's cell at the departure
+> phase. Maps, rewards, state size and every other convention are
+> identical across branches; each branch's pipeline is fully re-run, and
+> this report closes with a three-way retrospective (§13) testing the
+> claim that a moving obstacle is "equivalent" to the gate.
 
 All experiment parameters live in [experiments/configs/default.json](experiments/configs/default.json)
 so every result is reproducible from the committed configuration.

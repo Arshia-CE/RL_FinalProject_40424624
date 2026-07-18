@@ -107,9 +107,9 @@ def _try_generate(cfg: dict, base_seed: int, attempt: int,
     for r, c in rng.sample(candidates, cfg["num_penalty_cells"]):
         grid[r][c] = PENALTY
 
-    # periodic gate at the chamber entrance: by construction this is the
+    # wizard home (T) at the chamber entrance: by construction this is the
     # only cell from which the door can be reached, so every successful
-    # episode must pass it and the gate phase truly shapes the policy
+    # episode must pass it and the blink phase truly shapes the policy
     gate = outside
     grid[gate[0]][gate[1]] = GATE
 
