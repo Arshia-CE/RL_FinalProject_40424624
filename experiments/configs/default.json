@@ -23,10 +23,10 @@
     },
 
     "energy": {
-        "initial": 100,
+        "initial": 80,
         "penalty_drain": 5,
         "death_reward": -50,
-        "comment": "every step burns 1 energy (bumps included); entering a penalty cell drains penalty_drain extra; at 0 the episode terminates as a death worth death_reward, costlier than any plausible continued struggle so giving up early is never optimal. initial=100 set by a learnability study: at the knife-edge budget 57 (optimal success 98.8%) tabular learners cap out near 84% eval success even with 80k episodes because every extra step converts to deaths, and sparse learners never ignite; at 100 shaped Q-Learning reaches 100% and sparse SARSA(0.7) 99% eval success. The low-energy policy structure (pit detours below e=15) is independent of the starting budget and remains in the analysis"
+        "comment": "every step burns 1 energy (bumps included); entering a penalty cell drains penalty_drain extra; at 0 the episode terminates as a death worth death_reward, costlier than any plausible continued struggle so giving up early is never optimal. initial=80 is the learnability knee measured across {57, 70, 80, 100}: at 57 (optimal success 98.8%) learners cap near 84% eval even with 80k episodes because every extra step converts to deaths and sparse learning never ignites; at 70 shaped QL needs 40k episodes for only 94%; at 80 shaped QL reaches 98% within the budget and sparse SARSA(0.7) 95.6% with 30k episodes, both keeping a visible death rate; 100 pushes both to ~100% but hands the agent 2.4x the 42-step optimum. The low-energy policy structure (pit detours below e=15) is independent of the starting budget"
     },
 
     "rewards": {
@@ -65,13 +65,13 @@
         "epsilon_decay_schedules": ["linear", "exponential"],
         "seeds": [7, 21, 42],
         "trace_episode": 7500,
-        "comment": "budgets x3 vs the gate design: the state space is ~17x larger (47066 states) and death caps episodes at ~100 steps, so each early episode yields far fewer samples than a 699-step timeout episode did. Sparse one-step Q-Learning never learns this task (documented in the report); the canonical agent is shaped/exponential"
+        "comment": "budgets x3 vs the gate design: the state space is ~13x larger (37746 states) and death caps episodes at ~80 steps, so each early episode yields far fewer samples than a 699-step timeout episode did. Sparse one-step Q-Learning never learns this task (documented in the report); the canonical agent is shaped/exponential"
     },
 
     "sarsa_lambda": {
         "alpha": 0.1,
         "gamma": 0.95,
-        "episodes": 15000,
+        "episodes": 30000,
         "epsilon_start": 1.0,
         "epsilon_end": 0.05,
         "epsilon_decay_schedule": "exponential",
@@ -80,7 +80,8 @@
         "trace_prune": 1e-4,
         "lambda_sweep": [0.0, 0.3, 0.7, 0.9],
         "seeds": [7, 21, 42],
-        "trace_episode": 14900
+        "trace_episode": 29900,
+        "comment": "SARSA ignites late under the energy budget (sparse traces, first success ~ep 7000); 30k episodes vs QL's 15k so the sweep converges past the 90% band"
     },
 
     "transfer": {
