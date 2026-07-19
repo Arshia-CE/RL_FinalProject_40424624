@@ -879,8 +879,11 @@ The artifact set in this repository is a full pipeline run under the
 energy dynamics; map generation and every training run are seeded
 (training seeds {7, 21, 42}, evaluation seed 999, all in the config), so
 re-running the README commands reproduces the committed CSVs
-line-for-line (up to wall-clock runtime fields). Unit tests:
-`python -m pytest tests/` (67 tests).
+line-for-line (up to wall-clock runtime fields). One artifact is
+deliberately not committed: `transfer_training.csv` (18 runs × 50,000
+episodes, ~105 MB) exceeds GitHub's file-size limit and is regenerated
+deterministically by the pipeline; the summary CSV and figures derived
+from it are committed. Unit tests: `python -m pytest tests/` (67 tests).
 
 ## 13. Design retrospective: two clocks and a fuel tank
 
