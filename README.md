@@ -23,16 +23,19 @@ maze_size  = 15 + (base_seed % 4)       # = 17  ->  17x17 maze
 | Dynamic feature | **Periodic gate** (opens/closes on a fixed cycle) |
 | State representation | `s = (x, y, has_key, gate_phase)` |
 
-> **One task, three designs.** This branch is the **main design**: a move
+> **One task, four designs.** This branch is the **main design**: a move
 > into the gate cell succeeds if the gate is open at the moment the move
-> is made (departure semantics). Two alternative designs are implemented,
+> is made (departure semantics). Three alternative designs are implemented,
 > fully re-run and analyzed on their own branches, each closing its
 > report with a retrospective against this baseline: **`future_phase`**
 > keeps the gate but requires it to be open **on arrival** (the phase
-> after the step), and **`wizard_obstacle`** replaces the gate with a
+> after the step), **`wizard_obstacle`** replaces the gate with a
 > **moving obstacle** — a wizard blinking along a fixed patrol of the
-> doorway corridor, blocking whichever cell he occupies. Maps, rewards
-> and state size are identical across all three branches.
+> doorway corridor, blocking whichever cell he occupies — and
+> **`limited_energy`** replaces the gate with an **observable energy
+> budget** (every step burns fuel, pits drain extra, running dry is a
+> death), growing the state space ×17 and studying what that does to
+> tabular learning. The maps are byte-identical across all four branches.
 
 All experiment parameters live in [experiments/configs/default.json](experiments/configs/default.json)
 so every result is reproducible from the committed configuration.
