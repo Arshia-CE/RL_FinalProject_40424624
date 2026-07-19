@@ -59,19 +59,21 @@
         "alpha": 0.1,
         "gamma": 0.95,
         "episodes": 15000,
+        "sparse_episodes": 60000,
         "epsilon_start": 1.0,
         "epsilon_end": 0.05,
         "epsilon_decay_episodes": 12000,
         "epsilon_decay_schedules": ["linear", "exponential"],
         "seeds": [7, 21, 42],
         "trace_episode": 7500,
-        "comment": "budgets x3 vs the gate design: the state space is ~13x larger (37746 states) and death caps episodes at ~80 steps, so each early episode yields far fewer samples than a 699-step timeout episode did. Sparse one-step Q-Learning never learns this task (documented in the report); the canonical agent is shaped/exponential"
+        "comment": "the canonical budget is 15000 episodes (shaped runs converge by ~10k); sparse one-step runs get the 60k control horizon sparse_episodes because their cascade only completes around ep ~31-33k - a x28 slowdown vs the gate design's 2796 states, the report's central scaling result. The canonical agent is shaped/exponential"
     },
 
     "sarsa_lambda": {
         "alpha": 0.1,
         "gamma": 0.95,
         "episodes": 30000,
+        "lambda0_episodes": 60000,
         "epsilon_start": 1.0,
         "epsilon_end": 0.05,
         "epsilon_decay_schedule": "exponential",
@@ -81,7 +83,7 @@
         "lambda_sweep": [0.0, 0.3, 0.7, 0.9],
         "seeds": [7, 21, 42],
         "trace_episode": 29900,
-        "comment": "SARSA ignites late under the energy budget (sparse traces, first success ~ep 7000); 30k episodes vs QL's 15k so the sweep converges past the 90% band"
+        "comment": "SARSA ignites late under the energy budget (sparse reward, first success ~ep 5-7k); 30k episodes vs QL's 15k so the traced sweep converges past the 90% band. lambda=0 has no traces and needs ~33k, so it gets the lambda0_episodes control horizon like sparse Q-Learning"
     },
 
     "transfer": {

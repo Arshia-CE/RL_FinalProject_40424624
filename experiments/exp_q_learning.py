@@ -21,7 +21,6 @@ MODEL_DIR = MODELS_DIR / "q_learning"
 def run_q_learning(config: dict) -> None:
     maze = MazeMap.load(MAPS_DIR / "source.json")
     qcfg = config["q_learning"]
-    episodes = qcfg["episodes"]
     seeds = qcfg["seeds"]
     reference = VIResult.load(
         MODELS_DIR / "vi"
@@ -31,6 +30,8 @@ def run_q_learning(config: dict) -> None:
     canonical: dict[tuple[str, str], QLearningAgent] = {}
     training_rows, summary_rows = [], []
     for mode in ("sparse", "shaped"):
+        # sparse one-step learning needs the control horizon to converge
+        episodes = qcfg["sparse_episodes" if mode == "sparse" else "episodes"]
         for schedule_name in qcfg["epsilon_decay_schedules"]:
             per_seed = []
             for seed in seeds:

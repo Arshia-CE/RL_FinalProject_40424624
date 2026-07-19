@@ -133,7 +133,7 @@ budget must cover that mean, its right tail, and the imperfection of
 | 40 | 34.8% | |
 | 45 | 70.5% | |
 | 50 | 89.4% | |
-| 57 | 98.8% | knife-edge: optimal play survives, **nothing tabular can learn** (§4 note) |
+| 57 | 98.8% | knife-edge: optimal play survives, **no tabular learner converges** (capped ≈84% eval at any budget) |
 | 60 | 99.6% | |
 | 70+ | 100% | learnability knee ≈ 1.9 × a map's optimal mission length |
 
@@ -285,26 +285,38 @@ termination (death included), and per-state visit counts saved with the
 table. Hyper-parameters (config): α = 0.1, γ = 0.95, ε: 1.0 → 0.05 over
 12,000 episodes, 15,000 episodes, seeds {7, 21, 42}.
 
-**The headline result of this section: sparse one-step Q-Learning cannot
-learn this task at all.** All six sparse runs end with ~1% training
-success and 1–2% evaluation success (mean return −162 to −170,
-essentially every episode a death) after 15,000 episodes — and control
-experiments up to 40,000 episodes show the same flat line. The failure is
-structural, not budgetary. Three mechanisms compound:
+**The headline result of this section: sparse one-step Q-Learning
+learns this task ×28 slower than it learned the gate version.** Within
+the canonical 15,000-episode budget it does not converge at all (~1%
+training success, nearly every episode a death) — yet its logs show the
+middle of a story, not its absence: the key-found rate is still
+climbing through ~58% as that budget ends. The committed sparse runs
+therefore train on a 60,000-episode control horizon (config
+`sparse_episodes`), which lets the cascade complete on record: key rate
+saturating by ~25,000, success igniting only afterwards, sustained 90%
+at episode **31,370** (seed mean) and final evaluation 99.2% success,
+return 161.3. Against shaped Q-Learning's 5,639 that is a **5.6×
+slowdown — and ×28.5 against the identical sparse configuration on the
+2,796-state gate branches (~1,099)** — while at the knife-edge budget
+E0 = 57 sparse learning never ignites at any tested length. Three
+mechanisms produce the slowdown:
 
-1. **Exploration cannot reach the goal.** A random walk under a 100-step
-   life almost never completes the 42-step two-leg mission, so the +200
-   is effectively never observed (first successes arrive after ~5,600
-   episodes, and remain isolated).
+1. **Exploration reaches the goal extremely rarely.** A random walk
+   under a 100-step life almost never completes the 42-step two-leg
+   mission, so the +200 is barely observed (first successes arrive after
+   ~5,600 episodes, and stay isolated for thousands more).
 2. **The energy dimension fragments the table.** Each cell must be
    learned separately at every arrival budget; a success at
    (cell, e = 61) teaches nothing about (cell, e = 58), so the visits
-   that main's 2,796-state table concentrated are spread over ~20,000
+   that main's 2,796-state table concentrated are spread over ~26,000
    states here.
-3. **One-step backups cannot chain rare successes.** A lone success
-   updates only the final pre-goal state; the next success arrives at a
-   different energy layer and fails to reuse it. (SARSA's traces repair
-   exactly this — §5.)
+3. **One-step backups chain rare successes one link at a time.** A lone
+   success updates only the final pre-goal state, and the next success
+   arrives at a different energy layer. The +50 key reward gives the
+   cascade a halfway platform — visible in the logs as the key-rate
+   curve saturating a full 10,000 episodes before the success curve
+   moves — but the goal leg must then chain across the layered table
+   backup by backup. (SARSA's traces compress exactly this — §5.)
 
 The canonical Q-Learning agent is therefore the **shaped/exponential**
 run: the potential gradient makes every step informative, and learning
@@ -325,43 +337,49 @@ TD error = target − Q(s,a)   = 7.486090 − 5.847821 = 1.638269
 Q(s,a)  ← 5.847821 + 0.1 · 1.638269 = 6.011648  ✓ (matches the log)
 ```
 
-### 4.1 ε-decay schedules (shaped reward)
+### 4.1 ε-decay schedules
 
 | run (3 seeds each, seed means) | first success | episodes to 90% success | eval success / death | eval return | VI policy agreement |
 |---|---|---|---|---|---|
 | shaped / exponential | ep 1,952 | **5,639** | 99.9% / 0.1% | 167.2 | 57.4% |
 | shaped / linear | ep 4,293 | 9,853 | 99.7% / 0.3% | 163.5 | 58.7% |
+| sparse / exponential (60k horizon) | ep 5,628 | 31,370 | 99.2% / 0.8% | 161.3 | 39.3% |
+| sparse / linear (60k horizon) | ep 10,250 | 32,556 | 99.2% / 0.8% | 161.7 | 39.4% |
 
 ![Q-Learning decay schedules](results/figures/q_learning/q_learning_decay_schedules.png)
 
-Exponential decay reaches sustained success ~1.7× earlier, for the same
-reason as on the gate branches: ε collapses early and the agent exploits
-the shaping gradient sooner. The trade-off also survives: linear decay
-explores longer and ends with slightly higher agreement with the optimal
-policy. (The figure's sparse panels are flat near zero — the §4 failure,
-plotted.)
+On the shaped pair, exponential decay reaches sustained success ~1.7×
+earlier, for the same reason as on the gate branches: ε collapses early
+and the agent exploits the shaping gradient sooner; linear decay
+explores longer and ends with slightly higher agreement with the
+optimal policy. The schedule effect replicates on the sparse cascade at
+its own scale (31,370 vs 32,556, first successes 5,628 vs 10,250) but
+compressed — by the time sparse learning ignites, both schedules have
+long reached the same ε floor.
 
 ### 4.2 Sparse vs shaped reward
 
 | run (3 seeds each, seed means) | episodes to 90% | eval success | eval return | eval energy left |
 |---|---|---|---|---|
-| sparse / exponential | never | 1.5% | −169.8 | 0.1 |
+| sparse / exponential (60k horizon) | 31,370 | 99.2% | 161.3 | 30.1 |
 | shaped / exponential | **5,639** | **99.9%** | **167.2** | 34.1 |
 
 ![Q-Learning reward shaping](results/figures/q_learning/q_learning_reward_shaping.png)
 
 On the gate branches shaping was an accelerator (~3× fewer episodes to
-the same asymptote). Under the energy budget it is **the difference
-between learning and not learning** — the single largest effect measured
-in this project. The mechanism is visible in the key-found panel: the
-shaped agent's key rate saturates within ~2,000 episodes (the potential
-literally points at the key), which stretches its effective horizon deep
-enough for exploration to find the goal before dying; the sparse agent
-never gets there. The two final policies cannot meaningfully be compared
-for invariance this time (they agree on 36.6% of 15,601 jointly-visited
-states, but the sparse "policy" is an artifact of never having learned);
-the invariance evidence is instead §6's comparison of the shaped-trained
-policy against sparse Value Iteration.
+the same asymptote). Under the energy budget the acceleration grows to
+**5.6×** — and against the canonical 15,000-episode budget it is the
+difference between a converged agent and one still at zero success. The
+figure shows the mechanism in the key-found panel: the shaped agent's
+key rate saturates within ~2,500 episodes (the potential literally
+points at the key), while the sparse agent's climbs for ~20,000. The
+steps panel adds a subtlety unique to this branch: the sparse curve
+first *rises* toward ~95 steps per episode — before it can win, the
+agent must learn to survive — and only then falls as wins take over.
+Both asymptotes agree (returns 161–167, success ≥ 99%), the invariance
+§2.3 promises; yet the two converged greedy policies agree on only
+41.7% of 16,388 jointly-visited states — §6's near-tie effect,
+previewed: equally good policies need not be the same policy.
 
 ![Q-Learning visit map](results/figures/q_learning/q_learning_visit_map.png)
 
@@ -385,45 +403,50 @@ step-2 TD error updates the step-1 pair by exactly α·δ·γλ. Config:
 the Q-Learning budget — SARSA trains on the sparse reward, where ignition
 is slower; the config comment records the reasoning), seeds {7, 21, 42}.
 
-SARSA is this branch's second existence proof: **eligibility traces
-rescue sparse learning where one-step backups fail** (§4). A single
-completed episode writes the goal reward into the whole ~50-state
-trajectory at geometrically decaying strength — one success seeds an
-entire energy-consistent path through the layered table, which is exactly
-what the fragmented state space needs.
+SARSA gives a second, independent measurement of §4's bottleneck:
+**eligibility traces compress the sparse cascade ~2.9×** — λ = 0.7
+sustains 90% by episode ~11,300 where the trace-free λ = 0 needs
+~32,200 (and one-step Q-Learning ~31,400, §4). A single completed
+episode writes the goal reward into the whole ~50-state trajectory at
+geometrically decaying strength — one success seeds an entire
+energy-consistent path through the layered table, which is exactly what
+the fragmented state space needs.
 
 ### 5.1 λ sweep (sparse reward, seed means)
 
 | λ | first success | episodes to 90% success | late-training return std | eval success / death | eval return | pit entries /ep |
 |---|---|---|---|---|---|---|
-| 0 | 7,079 | never | 145.1 | 65.5% / 34.5% | 63.8 | 0.287 |
-| 0.3 | 6,219 | 19,900 | 54.8 | 98.5% / 1.5% | **158.9** | 0.232 |
+| 0 (60k horizon) | 7,079 | 32,218 | 48.4 | 99.5% / 0.5% | **169.5** | 0.248 |
+| 0.3 | 6,219 | 19,900 | 54.8 | 98.5% / 1.5% | 158.9 | 0.232 |
 | 0.7 | 5,315 | 11,263 | **44.9** | 99.2% / 0.8% | 158.1 | **0.192** |
 | 0.9 | 4,923 | **9,928** | 53.5 | 99.3% / 0.7% | 147.2 | 0.380 |
 
 ![SARSA lambda sweep](results/figures/sarsa/sarsa_lambda_sweep.png)
 
-The sweep is a clean dose-response in credit-assignment depth. λ = 0
-(one-step, on-policy) confirms §4's diagnosis from a second angle: it
-finds first successes but cannot chain them — 30,000 episodes end at
-65% evaluation success with enormous seed variance (late return std 145).
-Every λ > 0 converges, with speed monotone in λ (19,900 → 11,263 → 9,928
-episodes to sustained 90%). But depth costs stability at the top end:
-λ = 0.9's long traces propagate exploratory-slip and death deltas
-backward through half the trajectory, and its final returns are the
-lowest of the converged group (147.2 vs 158–159) with 2× the pit-entry
-rate — under a budget, backing up death spikes deep into the past makes
-the policy jumpy near hazards. **λ = 0.7 is again the best balance**:
-within 13% of λ = 0.9's speed, the lowest late variance (44.9), the
-best safety profile (0.192 pit entries/episode — beating even Value
-Iteration's 0.268) and finals statistically tied with λ = 0.3
+The sweep is a clean dose-response in credit-assignment depth, run to
+convergence at every λ (the trace-free λ = 0 gets the same 60,000-episode
+control horizon as sparse Q-Learning — the two are the same one-step
+algorithm up to the target policy, and they converge within 3% of each
+other: 32,218 vs 31,370). Speed is monotone in λ: deeper traces write
+each success further back up the trajectory, and λ = 0.9 sustains 90%
+in 3.2× fewer episodes than λ = 0. But depth costs quality at the top
+end: λ = 0.9's long traces also propagate exploratory-slip and *death*
+deltas backward through half the trajectory, and its finals are the
+worst of the sweep (147.2, pit rate 0.380 — jumpy near hazards) — while
+the trace-free λ = 0, once converged, posts the family's **best** finals
+(169.5): backups that never mix in trace-propagated surprises leave the
+cleanest values, if you can afford to wait for them. **λ = 0.7 sits at
+the speed/quality knee**: 2.9× faster than λ = 0, the lowest late
+variance (44.9), the best safety profile (0.192 pit entries/episode —
+beating even Value Iteration's 0.268) and finals within 7% of λ = 0's
 (analytical question 4, §10).
 
 ### 5.2 δ and E over one episode
 
 ![SARSA delta/E trace](results/figures/sarsa/sarsa_delta_trace.png)
 
-The traced episode (29,900, λ = 0.7; raw data in
+The traced episode (29,900, λ = 0.9 — the sweep's deepest traces; raw
+data in
 [sarsa_step_trace.csv](results/raw_data/sarsa/sarsa_step_trace.csv) and
 [sarsa_trace_dump.csv](results/raw_data/sarsa/sarsa_trace_dump.csv))
 happens to be a **death episode, end to end** — the single most
@@ -628,8 +651,12 @@ a 100-step life the agent dies there before ε = 0.3 exploration can find
 the relocated key; and the stale optimism must be unlearned separately
 at *every energy layer* — 101 copies of every poisoned cell, against the
 gate branches' 6 phases. On `main`, negative transfer was a transient
-(unlearned by episode ~700 of 5,000). Here it is a trap that outlasts a
-10× budget.
+(unlearned by episode ~700 of 5,000). Here a control run extended to
+**150,000 episodes** — 10× the study's budget, 3× what scratch needs —
+shows the trap is not absorbing in the limit but close to it in
+practice: rolling success crawls from 2% (50k) through 10% (100k) to
+~45% at 150k (evaluation 57%). Inheriting this table costs roughly an
+order of magnitude more experience than starting empty.
 
 **Selective transfer is the rescue**, and the contrast is the finding:
 by transferring only states whose 3×3 neighborhood is unchanged (61
@@ -726,7 +753,7 @@ the old-key basin and collapses there.
 | unit of progress | Bellman sweep | episode | episode |
 | compute for this task | ~4 s | ~27 s | ~233 s |
 | samples for this task | 0 | ~1.16M steps | ~2.39M steps |
-| sparse-reward learnability | exact regardless | **fails** (one-step, §4) | **succeeds via traces** (§5) |
+| sparse-reward learnability | exact regardless | ~31.4k episodes (one-step, §4) | **~11.3k with traces**; ~32.2k trace-free (§5) |
 | optimality reached | exact | 99.8% success, V^π ≪ V* (slow paths) | 99.0% success, V^π ≪ V* |
 | behavior near danger | risk-neutral optimal | risk-neutral estimates | measurably safest (0.192 pits/ep at λ=0.7) |
 | energy left at goal | 56.8 | 33.7 | 31.1 |
@@ -763,18 +790,22 @@ TD methods replace the expectation with sampled transitions. The trade,
 measured on this branch: with the model, exact optimality in ~4 s and
 zero samples; without it, 1.2–2.4M environment steps to policies that
 succeed ~99% of the time yet carry negative exact start-values (§6). The
-energy budget adds a caveat the gate branches could not show: when the
-task's slack is tight, the model-free sample bill is not merely large
-but *structural* — under sparse rewards it cannot be paid at all without
-traces or shaping (§4, §5).
+energy budget adds a caveat the gate branches could not show: the
+model-free sample bill scales with the feature — under sparse rewards
+the one-step bill grows ×28 against the gate branches (§4), and only
+mechanisms that share credit along trajectories (traces, §5; shaping,
+§4) pull it back toward the state-count growth.
 
 **Q4 — which λ balances learning speed and stability best?** λ = 0.7
-(§5.1): 11,263 episodes to sustained success (vs never at λ=0, 19,900 at
-λ=0.3, 9,928 at λ=0.9), the lowest late-training variance (44.9), finals
-tied with λ=0.3 (158.1 vs 158.9) and the best safety profile of any
-agent in the project. λ=0.9 is 13% faster to the 90% mark but pays in
-final quality (147.2) and hazard exposure — under a death terminal, the
-speed/stability trade-off has real stakes.
+(§5.1): 11,263 episodes to sustained success (vs 32,218 at λ=0, 19,900
+at λ=0.3, 9,928 at λ=0.9), the lowest late-training variance (44.9) and
+the best safety profile of any agent in the project. The endpoints
+bracket it: λ=0 eventually posts the best finals (169.5 — one-step
+backups never mix in trace-propagated noise) but needs 2.9× the
+episodes; λ=0.9 is 13% faster than 0.7 but pays in final quality
+(147.2) and hazard exposure (0.380 pits/ep) — under a death terminal
+the speed/quality trade-off has real stakes, and λ=0.7 sits at its
+knee.
 
 **Q5 — three states where the model-free policy differs from VI, with
 local analysis.** §6: (12,10, k=1, e=57) — a systematic on-policy safety
@@ -870,9 +901,9 @@ three, the comparison is unusually controlled:
 | V*(start), γ=0.95 | 9.60 | 9.56 | 11.66 (no gate waits; not directly comparable) |
 | VI convergence | discount-bound (80–102 sweeps by γ) | discount-bound | **horizon-bound** (74–90 for all γ) |
 | where the feature shows in π* | at the doorway, by phase | everywhere near the doorway, predictively | **everywhere, by budget** — desperation band below e≈15 |
-| sparse Q-Learning | learns (~1,099 eps to 90%) | learns (~1,162) | **cannot learn at all** |
-| shaped Q-Learning | ~3× speedup | ~3× speedup | **the difference between learning and not**; 5,639 eps to 90% |
-| sparse SARSA(0.7) | learns (~982) | learns (~957) | learns via traces (11,263; λ=0 fails) |
+| sparse Q-Learning | learns (~1,099 eps to 90%) | learns (~1,162) | **~31,370** (×28.5; 60k control horizon) |
+| shaped Q-Learning | ~3× speedup | ~3× speedup | ~5.6× speedup; 5,639 eps to 90% |
+| sparse SARSA(0.7) | learns (~982) | learns (~957) | learns via traces (11,263; trace-free λ=0: 32,218) |
 | env steps to 90% (best learner) | ~527k | ~500k | ~526k (Q-Learning shaped) |
 | negative transfer (different target) | transient, corrected by ep ~700 | transient | **permanent trap at any β; only selective transfer survives** |
 | model file (Q-table) | ~271 KB | ~271 KB | ~1,392 KB |
@@ -881,15 +912,17 @@ three, the comparison is unusually controlled:
 **What the resource design taught that the clocks could not:**
 
 - **The tabular scaling law, measured on one task.** Multiplying the
-  state space ×16.8 multiplied shaped Q-Learning's episodes-to-90% by
-  only ×5.1 — and, strikingly, left its *environment-step* bill almost
-  unchanged (~526k steps on both designs), because energy episodes are
-  ~7× shorter than the gate's timeout-padded random walks. The real cost
-  surfaced elsewhere: sparse one-step learning, comfortable on 2,796
-  states, is *impossible* on 47,066 energy-layered ones. The budget
-  fragments experience across layers that tabular methods cannot
-  generalize between; only mechanisms that share credit along
-  trajectories — traces (§5) or a dense potential (§4) — bridge them.
+  state space ×16.8 multiplied episodes-to-90% by ×28.5 for sparse
+  one-step Q-Learning (1,099 → 31,370 — recorded on a 60k control
+  horizon; the canonical 15k budget catches it mid-cascade at zero
+  success), but only ×11.5 for SARSA(0.7) and ×14.8 for shaped
+  Q-Learning: mechanisms that share credit along trajectories — traces,
+  or a dense potential — pull the scaling back to roughly the
+  state-count growth, while pure one-step bootstrapping pays
+  super-linearly for the energy layers it cannot generalize between.
+  Strikingly, the canonical agent's *environment-step* bill barely
+  moved (~526k steps to 90% here vs ~613k on `main`), because energy
+  episodes are ~7× shorter than the gate's timeout-padded random walks.
   That is the difference between a small cyclic state variable and a
   large monotone one, demonstrated rather than asserted.
 - **A design knob with a measurable operating curve.** The gates were

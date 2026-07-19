@@ -157,8 +157,8 @@ dependency order (`transfer` needs the Q-table saved by `q_learning`;
 | experiment | outputs (under `results/`) | ≈ time |
 |---|---|---|
 | `vi` | `raw_data/vi/` (γ sweep CSV), `models/vi/` (3), `figures/vi/` (4) | ~15 s |
-| `q_learning` | training/summary/update-trace CSVs, 4 Q-tables, 3 figures | ~10 min |
-| `sarsa_lambda` | training/summary/δ‑E trace CSVs, 4 Q-tables, 2 figures | ~60 min |
+| `q_learning` | training/summary/update-trace CSVs, 4 Q-tables, 3 figures | ~15 min |
+| `sarsa_lambda` | training/summary/δ‑E trace CSVs, 4 Q-tables, 2 figures | ~70 min |
 | `comparison` | summary + sample-state CSVs, 4 figures | ~5 min |
 | `transfer` | training/summary/negative-case CSVs, 2 Q-tables, 6 figures | ~90 min |
 

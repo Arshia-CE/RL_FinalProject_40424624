@@ -36,6 +36,9 @@ def run_sarsa_lambda(config: dict) -> None:
     histories: dict[float, list[list[dict]]] = {}
     training_rows, summary_rows = [], []
     for lam in scfg["lambda_sweep"]:
+        # lambda=0 has no traces and, like sparse one-step Q-Learning,
+        # needs the control horizon to converge
+        lam_episodes = scfg["lambda0_episodes"] if lam == 0 else episodes
         per_seed = []
         for seed in seeds:
             env = MazeEnv(maze, config, reward_mode="sparse", seed=seed)
@@ -47,7 +50,7 @@ def run_sarsa_lambda(config: dict) -> None:
             trace_eps = (frozenset({scfg["trace_episode"]})
                          if is_canonical and lam == trace_lambda
                          else frozenset())
-            history, step_trace, dump = agent.train(episodes, schedule,
+            history, step_trace, dump = agent.train(lam_episodes, schedule,
                                                     trace_episodes=trace_eps)
             per_seed.append(history)
             training_rows += [{"lambda": lam, "seed": seed, **row}
@@ -62,7 +65,7 @@ def run_sarsa_lambda(config: dict) -> None:
             if is_canonical:
                 agent.save(MODEL_DIR / f"sarsa_lambda{lam:g}_sparse.json",
                            {"reward_mode": "sparse", "seed": seed,
-                            "episodes": episodes,
+                            "episodes": lam_episodes,
                             "schedule": scfg["epsilon_decay_schedule"],
                             "trace_prune": scfg["trace_prune"]})
 
