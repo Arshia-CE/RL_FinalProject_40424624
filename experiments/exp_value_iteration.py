@@ -14,7 +14,7 @@ from experiments.maze_plots import (plot_policy_arrows,
 
 # panel budgets for the per-energy policy figure: full budget down into the
 # desperation band (e <= 14) where the policy starts detouring around pits
-ENERGY_PANEL_LEVELS = [80, 60, 40, 25, 15, 8]
+ENERGY_PANEL_LEVELS = [100, 60, 40, 25, 15, 8]
 
 RAW_DIR = RAW_DATA_DIR / "vi"
 FIG_DIR = FIGURES_DIR / "vi"

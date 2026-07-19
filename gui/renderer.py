@@ -401,7 +401,7 @@ class GameBoard(tk.Canvas):
             hidden = int(an["fall"]["t"] * 12) % 2 == 0
         if an["death"]:
             f = min(1.0, an["death"]["t"] / 1.1)
-            sink += f * 10 * self.scale  # collapse into the floor
+            sink -= f * 14 * self.scale  # the spirit rises off the board
             hidden = (f >= 1.0  # flicker faster as the lights go out
                       or int(an["death"]["t"] * (6 + 14 * f)) % 2 == 0)
         name, flip = FACING[an["facing"]]

@@ -20,19 +20,18 @@ maze_size  = 15 + (base_seed % 4)       # = 17  ->  17x17 maze
 |---|---|
 | Base seed | `2` |
 | Maze size | `17 x 17` |
-| Dynamic feature | **Periodic gate** (opens/closes on a fixed cycle) |
-| State representation | `s = (x, y, has_key, gate_phase)` |
+| Dynamic feature | **Limited energy** (a 100-unit budget; every step burns 1, pits drain 6, empty = death) |
+| State representation | `s = (x, y, has_key, energy)` — 47,066 states |
 
-> **One task, three designs.** This branch is the **main design**: a move
-> into the gate cell succeeds if the gate is open at the moment the move
-> is made (departure semantics). Two alternative designs are implemented,
-> fully re-run and analyzed on their own branches, each closing its
-> report with a retrospective against this baseline: **`future_phase`**
-> keeps the gate but requires it to be open **on arrival** (the phase
-> after the step), and **`wizard_obstacle`** replaces the gate with a
-> **moving obstacle** — a wizard blinking along a fixed patrol of the
-> doorway corridor, blocking whichever cell he occupies. Maps, rewards
-> and state size are identical across all three branches.
+> **One task, several designs.** This branch replaces the periodic gate
+> with an **observable limited-energy budget**: every step costs one
+> unit (bumps included), penalty cells drain five extra, and running dry
+> terminates the episode as a death (−50) — reaching the goal on the
+> last unit still wins. The maps are byte-identical to the gate
+> branches; the report closes with a retrospective comparing the clock
+> designs (`main`: gate open at departure; `future_phase`: gate open on
+> arrival) against this resource design, including the tabular scaling
+> study the ×17 state space made possible.
 
 All experiment parameters live in [experiments/configs/default.json](experiments/configs/default.json)
 so every result is reproducible from the committed configuration.
@@ -57,7 +56,7 @@ RL_FinalProject_40424624/
 │   ├── controller.py      # Game sessions: WATCH (trained) / TRAIN (live)
 │   ├── renderer.py        # Pixel game board + animation engine
 │   ├── hud.py             # HUD, control bar, menus, overlays
-│   ├── sprites.py         # Pixel-art sprites (hero, dragon, princess, ...)
+│   ├── sprites.py         # Pixel-art sprites (hero, princess, key, ...)
 │   └── theme.py           # Palette, fonts, timing
 ├── experiments/
 │   ├── run_experiments.py # Dispatcher: runs all or selected experiments
@@ -115,26 +114,27 @@ plays the maze. It boots into a title menu with three selectors:
 - **SELECT WORLD** — the source maze or either transfer target
   (`environments/maps/*.json`, the exact maps used by all experiments).
 - **HERO BRAIN** — Value Iteration (solved exactly on the fly for the chosen
-  world), or the trained Q-Learning / SARSA(λ=0.7) tables loaded from
-  `results/models/`. Picking a trained table on Worlds 2/3 lets you watch
-  transfer behavior (including negative transfer) live.
-- **MODE** — WATCH (the policy plays greedily) or TRAIN (a fresh Q-Learning /
-  SARSA(λ) learner trains in real time; at speeds ≥ 2× it fast-forwards
-  whole episodes per frame, ~60+ episodes/s).
+  world), or the trained Q-Learning (shaped) / SARSA(λ=0.7) tables loaded
+  from `results/models/`. Picking the source-trained table on World 3 lets
+  you watch the report's negative-transfer trap live.
+- **MODE** — WATCH (the policy plays greedily) or TRAIN (a fresh learner
+  trains in real time — shaped Q-Learning or sparse SARSA(λ), mirroring the
+  canonical experiments; at speeds ≥ 2× it fast-forwards whole episodes per
+  frame, ~60+ episodes/s).
 
 In-game controls: PAUSE (menu), PLAY/PAUSE, STEP (single step), RESTART,
 animation-speed slider (0.5–4×), and POLICY — an overlay of greedy-action
-arrows for the agent's current key status and gate phase, updating live
-during training. The HUD shows score (cumulative reward), steps/step-cap,
-key status, the dragon-gate countdown, episode number, ε, and the recent
-success rate.
+arrows for the agent's current key status and remaining energy, updating
+live as the budget drains. The HUD shows score (cumulative reward), steps,
+key status, the color-banded energy bar (green → gold → red), episode
+number, ε, and the recent success rate.
 
 Everything on the board is diegetic: walls are bricks, penalty cells are
-thorn-ringed pits the hero falls into (with a floating −10), the key bobs
-and sparkles, the locked door slides open, reaching the princess wins the
-level — and the periodic gate is a dragon that emerges from its den on
-closed phases and retreats on open ones, with bumps, popups and win/timeout
-screens animating every logged environment event.
+thorn-ringed pits the hero falls into (a floating −10 plus a cyan −6 ENERGY
+drain), the key bobs and sparkles, the locked door slides open, reaching
+the princess wins the level — and running out of energy plays the branch's
+signature animation: the hero's spirit flickers and rises off the board
+under a −50 popup, followed by an OUT OF ENERGY screen.
 
 ## Reproducing the results
 
@@ -145,8 +145,8 @@ and the committed maps — nothing is entered by hand. The full pipeline:
 ```bash
 pip install -r requirements.txt
 python environments/generator.py           # reproduces all 3 maps byte-for-byte
-python experiments/run_experiments.py      # all experiments (~60–90 min)
-python -m pytest tests/                    # 60 unit tests
+python experiments/run_experiments.py      # all experiments (~2.5–3 h)
+python -m pytest tests/                    # 67 unit tests
 ```
 
 `run_experiments.py` also accepts a subset, e.g.
@@ -156,11 +156,11 @@ dependency order (`transfer` needs the Q-table saved by `q_learning`;
 
 | experiment | outputs (under `results/`) | ≈ time |
 |---|---|---|
-| `vi` | `raw_data/vi/` (γ sweep CSV), `models/vi/` (3), `figures/vi/` (4) | seconds |
-| `q_learning` | training/summary/update-trace CSVs, 4 Q-tables, 3 figures | ~5 min |
-| `sarsa_lambda` | training/summary/δ‑E trace CSVs, 4 Q-tables, 2 figures | ~25 min |
-| `comparison` | summary + sample-state CSVs, 4 figures | ~2 min |
-| `transfer` | training/summary/negative-case CSVs, 2 Q-tables, 6 figures | ~30–60 min |
+| `vi` | `raw_data/vi/` (γ sweep CSV), `models/vi/` (3), `figures/vi/` (4) | ~15 s |
+| `q_learning` | training/summary/update-trace CSVs, 4 Q-tables, 3 figures | ~10 min |
+| `sarsa_lambda` | training/summary/δ‑E trace CSVs, 4 Q-tables, 2 figures | ~60 min |
+| `comparison` | summary + sample-state CSVs, 4 figures | ~5 min |
+| `transfer` | training/summary/negative-case CSVs, 2 Q-tables, 6 figures | ~90 min |
 
 Determinism: map generation, Value Iteration and all agent training runs are
 seeded (training seeds `{7, 21, 42}`, evaluation seed `999`, all recorded in

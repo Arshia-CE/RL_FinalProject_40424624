@@ -1,4 +1,4 @@
-algorithm,runtime_seconds,table_states,model_file_kb,episodes_to_90pct_success,env_steps_to_90pct,total_env_steps,eval_success_rate,eval_mean_return,eval_mean_steps,eval_penalty_entries_per_ep,eval_wall_hits_per_ep,eval_gate_blocked_per_ep,v_pi_start,v_star_start,vi_agreement,disagreements,median_action_gap,gap_below_0.5,penalty_adjacent_agreement
-value_iteration,0.1,2784,103.3,,,,1.0,191.61,43.44,0.26,2.336,0.334,9.5987,9.5987,,,,,
-q_learning,7.78,2724,271.3,1140,612908,850601,1.0,189.99,45.55,0.236,2.26,0.398,5.932,9.5987,0.5143,1323,4.233,0.1912,0.6732
-sarsa_lambda,54.1,2724,274.1,1029,526282,769145,1.0,190.63,44.36,0.188,2.518,0.266,7.8305,9.5987,0.5187,1311,4.386,0.1831,0.6373
+algorithm,runtime_seconds,table_states,model_file_kb,episodes_to_90pct_success,env_steps_to_90pct,total_env_steps,eval_success_rate,eval_death_rate,eval_mean_return,eval_mean_steps,eval_mean_energy_left,eval_penalty_entries_per_ep,eval_wall_hits_per_ep,v_pi_start,v_star_start,vi_agreement,disagreements,median_action_gap,gap_below_0.5,penalty_adjacent_agreement
+value_iteration,4.31,46400,1744.8,,,,1.0,0.0,194.09,41.89,56.77,0.268,2.268,11.6622,11.6622,,,,,
+q_learning,26.56,16542,1391.9,5931,526319,1158535,0.998,0.002,167.8,64.58,33.67,0.35,2.724,-13.4437,11.6622,0.5744,7041,1.651,0.2914,0.6057
+sarsa_lambda,232.85,21991,2037.8,10917,993447,2393736,0.99,0.01,158.59,67.83,31.06,0.222,3.772,-13.2987,11.6622,0.3775,13689,5.679,0.2115,0.4082

@@ -48,9 +48,16 @@ def _train_with_snapshots(agent: QLearningAgent, episodes: int, schedule,
 def run_transfer(config: dict) -> None:
     tcfg = config["transfer"]
     source_maze = MazeMap.load(MAPS_DIR / "source.json")
-    # the shaped table is the canonical source: the sparse one never learns
+    # the shaped table is the canonical source: the sparse one never learns.
+    # Shaped Q converges to Q_sparse - phi(s), so cross-map transfer must
+    # de-shape with the SOURCE potential and re-base into the TARGET's, or
+    # the action-independent offset turns into phantom TD errors that
+    # poison bootstrapping (full transfer collapsed to 2% train success on
+    # the different target without this).
     source_q, _ = QLearningAgent.load_table(
         MODELS_DIR / "q_learning" / "q_learning_shaped_exponential.json")
+    src_phi = MazeEnv(source_maze, config, reward_mode="shaped")._phi
+    sparse_equiv = {s: q + src_phi(s) for s, q in source_q.items()}
     schedule = epsilon_schedule(tcfg["epsilon_decay_schedule"],
                                 tcfg["epsilon_start"], tcfg["epsilon_end"],
                                 tcfg["epsilon_decay_episodes"])
@@ -98,15 +105,18 @@ def run_transfer(config: dict) -> None:
             print(f"  [{kind}] negative-transfer case: "
                   f"s={tuple(negative_state)} gap={best_gap:.2f}")
 
+        tgt_phi = MazeEnv(target, config, reward_mode="shaped")._phi
         scenarios: dict[str, dict] = {
-            "scratch": initial_q_table(source_q, "scratch"),
-            "full": initial_q_table(source_q, "full"),
-            **{f"scaled_{beta:g}": initial_q_table(source_q, "scaled",
-                                                   beta=beta)
-               for beta in tcfg["beta_values"]},
-            "selective": initial_q_table(source_q, "selective",
-                                         unchanged=unchanged),
-        }
+            name: {s: q - tgt_phi(s) for s, q in table.items()}
+            for name, table in {
+                "scratch": initial_q_table(sparse_equiv, "scratch"),
+                "full": initial_q_table(sparse_equiv, "full"),
+                **{f"scaled_{beta:g}": initial_q_table(sparse_equiv,
+                                                       "scaled", beta=beta)
+                   for beta in tcfg["beta_values"]},
+                "selective": initial_q_table(sparse_equiv, "selective",
+                                             unchanged=unchanged),
+            }.items()}
 
         histories: dict[str, list[list[dict]]] = {}
         for name, init_q in scenarios.items():
@@ -125,9 +135,13 @@ def run_transfer(config: dict) -> None:
                     history, snapshots = _train_with_snapshots(
                         agent, episodes, schedule, negative_state,
                         tcfg["negative_case_checkpoints"])
+                    # report Q* in the same target-shaped coordinates as
+                    # the snapshots (subtract the state's potential)
+                    phi_ns = tgt_phi(negative_state)
                     v_row = {"episode": "target_optimal",
                              **{f"q_{n}": round(float(
-                                 q_star[vi_target.index[negative_state], a]), 4)
+                                 q_star[vi_target.index[negative_state], a]
+                                 - phi_ns), 4)
                                 for a, n in enumerate(("up", "down", "left",
                                                        "right"))},
                              "greedy_action": vi_res.policy[negative_state]}

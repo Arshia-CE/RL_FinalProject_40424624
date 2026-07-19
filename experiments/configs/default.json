@@ -23,10 +23,10 @@
     },
 
     "energy": {
-        "initial": 80,
+        "initial": 100,
         "penalty_drain": 5,
         "death_reward": -50,
-        "comment": "every step burns 1 energy (bumps included); entering a penalty cell drains penalty_drain extra; at 0 the episode terminates as a death worth death_reward, costlier than any plausible continued struggle so giving up early is never optimal. initial=80 is the learnability knee measured across {57, 70, 80, 100}: at 57 (optimal success 98.8%) learners cap near 84% eval even with 80k episodes because every extra step converts to deaths and sparse learning never ignites; at 70 shaped QL needs 40k episodes for only 94%; at 80 shaped QL reaches 98% within the budget and sparse SARSA(0.7) 95.6% with 30k episodes, both keeping a visible death rate; 100 pushes both to ~100% but hands the agent 2.4x the 42-step optimum. The low-energy policy structure (pit detours below e=15) is independent of the starting budget"
+        "comment": "every step burns 1 energy (bumps included); entering a penalty cell drains penalty_drain extra; at 0 the episode terminates as a death worth death_reward, costlier than any plausible continued struggle so giving up early is never optimal. initial=100 is set by the HARDEST map: learnability knees sit near 1.9x a map's optimal mission (measured on the source across {57, 70, 80, 100}: 57 caps learners at 84% eval however long they train, 70 needs 40k episodes for 94%, 80 converges in budget), and the different transfer target's optimum is 48.5 steps, so 80 (1.65x) collapses the whole transfer study while 100 (2.06x) clears it; on the 42-step source map 100 is comfortable (2.4x). The low-energy policy structure (pit detours below e=15) is independent of the starting budget"
     },
 
     "rewards": {
@@ -96,7 +96,7 @@
             "extra_penalty_cells": 3
         },
         "beta_values": [0.25, 0.5, 0.75],
-        "episodes": 15000,
+        "episodes": 50000,
         "alpha": 0.1,
         "gamma": 0.95,
         "epsilon_start": 0.3,
@@ -105,7 +105,8 @@
         "epsilon_decay_schedule": "exponential",
         "seeds": [7, 21, 42],
         "jumpstart_episodes": 200,
-        "negative_case_checkpoints": [0, 300, 1500, 3000, 7500, 15000],
+        "negative_case_checkpoints": [0, 300, 1500, 3000, 7500, 15000, 30000,
+                                      50000],
         "comment": "epsilon starts at 0.3 for ALL scenarios (incl. scratch): zero-init Q with random tie-breaking explores like epsilon=1 anyway, and a low epsilon keeps the jumpstart advantage of transferred tables visible during training. Training uses the shaped reward (sparse is unlearnable from scratch under the energy budget); the source table is the shaped Q-Learning table and every evaluation runs on the sparse env"
     }
 }

@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import csv
 import sys
+import time
 from pathlib import Path
 
 import matplotlib
@@ -50,7 +51,11 @@ def hex_to_rgb(hex_color: str) -> np.ndarray:
 
 def save_figure(fig, path: Path) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    fig.savefig(path, dpi=200, bbox_inches="tight")
+    try:
+        fig.savefig(path, dpi=200, bbox_inches="tight")
+    except OSError:  # transient Desktop-sync/AV lock; one retry
+        time.sleep(2.0)
+        fig.savefig(path, dpi=200, bbox_inches="tight")
     plt.close(fig)
 
 
