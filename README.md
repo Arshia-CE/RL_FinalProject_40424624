@@ -36,6 +36,13 @@ maze_size  = 15 + (base_seed % 4)       # = 17  ->  17x17 maze
 > budget** (every step burns fuel, pits drain extra, running dry is a
 > death), growing the state space ×17 and studying what that does to
 > tabular learning. The maps are byte-identical across all four branches.
+>
+> Where to read what: this report (§13 summarizes all four); the
+> **deepest analysis** — a measured tabular scaling law, a "desperation"
+> band in the optimal policy and a permanent negative-transfer trap — is
+> on **`limited_energy`**, and the cross-design **robustness audit**
+> (which findings replicate under every dynamics and which flip) closes
+> the **`wizard_obstacle`** report.
 
 All experiment parameters live in [experiments/configs/default.json](experiments/configs/default.json)
 so every result is reproducible from the committed configuration.
@@ -76,7 +83,7 @@ RL_FinalProject_40424624/
 ├── results/               # One subfolder per experiment topic:
 │   ├── raw_data/{vi,q_learning,sarsa,comparison,transfer}/
 │   ├── models/{vi,q_learning,sarsa,transfer}/
-│   ├── figures/{vi,q_learning,sarsa,comparison,transfer}/
+│   ├── figures/{vi,q_learning,sarsa,comparison,transfer,gui}/
 │   └── videos/
 ├── tests/                 # Unit tests (generator, environment, updates)
 ├── report.md              # Final analytical report
@@ -137,7 +144,8 @@ thorn-ringed pits the hero falls into (with a floating −10), the key bobs
 and sparkles, the locked door slides open, reaching the princess wins the
 level — and the periodic gate is a dragon that emerges from its den on
 closed phases and retreats on open ones, with bumps, popups and win/timeout
-screens animating every logged environment event.
+screens animating every logged environment event. Screenshots of the app
+live in `results/figures/gui/` and are embedded in report §8.
 
 ## Reproducing the results
 
